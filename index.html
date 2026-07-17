@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Mi Biblioteca</title>
+
+<link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<header>
+<h1>📚 Mi Biblioteca</h1>
+</header>
+
+
+<main>
+
+<input id="buscar" 
+placeholder="🔍 Buscar libros o cómics">
+
+
+<div class="menu">
+
+<button onclick="mostrarLibros()">
+📖 Libros
+</button>
+
+<button onclick="mostrarComics()">
+💥 Cómics
+</button>
+
+</div>
+
+
+<div id="lista"></div>
+
+
+<button class="nuevo" onclick="nuevoElemento()">
+➕ Añadir
+</button>
+
+
+</main>
+
+
+<script src="app.js"></script>
+
+</body>
+</html>
