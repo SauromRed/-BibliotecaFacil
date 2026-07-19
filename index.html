@@ -1,55 +1,84 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Mi Biblioteca</title>
-
-<link rel="stylesheet" href="style.css">
-
-<link rel="manifest" href="manifest.json">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BibliotecaFácil</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
-
 <body>
+  <div class="contenedor">
+    <header class="hero">
+      <div>
+        <h1>📚 BibliotecaFácil</h1>
+        <p>Organiza tus libros, encuentra tus favoritos y mantén tu progreso en un solo lugar.</p>
+      </div>
+    </header>
 
-<header>
-<h1>📚 Mi Biblioteca</h1>
-</header>
+    <form id="formLibro" class="formulario">
+      <div class="campo">
+        <label for="titulo">Título</label>
+        <input id="titulo" name="titulo" type="text" placeholder="Ej. El principito" required>
+      </div>
 
+      <div class="campo">
+        <label for="autor">Autor</label>
+        <input id="autor" name="autor" type="text" placeholder="Ej. Antoine de Saint-Exupéry" required>
+      </div>
 
-<main>
+      <div class="campo">
+        <label for="categoria">Categoría</label>
+        <input id="categoria" name="categoria" type="text" placeholder="Ej. Fantasía" required>
+      </div>
 
-<input id="buscar" 
-placeholder="🔍 Buscar libros o cómics">
+      <div class="campo">
+        <label for="categoria">Categoría</label>
+        <input id="categoria" name="categoria" type="text" placeholder="Ej. Fantasía" required>
+      </div>
 
+      <div class="campo">
+        <label for="portada">Portada</label>
+        <input id="portada" name="portada" type="file" accept="image/*">
+        <div id="previewPortadaContenedor" class="preview-portada hidden">
+          <img id="previewPortada" alt="Vista previa de la portada" class="preview-img">
+        </div>
+      </div>
 
-<div class="menu">
+      <div class="campo">
+        <label for="estado">Estado</label>
+        <select id="estado" name="estado">
+          <option value="Read">Leído</option>
+          <option value="Reading">Leyendo</option>
+          <option value="Pending">Pendiente</option>
+        </select>
+      </div>
 
-<button onclick="mostrarLibros()">
-📖 Libros
-</button>
+      <div class="acciones">
+        <button type="submit" id="btnGuardar">Añadir libro</button>
+        <button type="button" id="btnCancelar" class="secundario hidden">Cancelar</button>
+      </div>
+    </form>
 
-<button onclick="mostrarComics()">
-💥 Cómics
-</button>
+    <section class="panel">
+      <div class="controles">
+        <input id="buscar" type="search" placeholder="Buscar por título, autor o categoría">
+        <select id="filtroCategoria">
+          <option value="todas">Todas las categorías</option>
+        </select>
+        <select id="filtroEstado">
+          <option value="todos">Todos los estados</option>
+          <option value="Read">Leídos</option>
+          <option value="Reading">Leyendo</option>
+          <option value="Pending">Pendientes</option>
+        </select>
+      </div>
 
-</div>
+      <p id="contadorLibros" class="contador"></p>
+      <div id="estadoVacio" class="estado-vacio hidden">No hay libros que coincidan con tu búsqueda.</div>
+      <ul id="listaLibros"></ul>
+    </section>
+  </div>
 
-
-<div id="lista"></div>
-
-
-<button class="nuevo" onclick="nuevoElemento()">
-➕ Añadir
-</button>
-
-
-</main>
-
-
-<script src="app.js"></script>
-
+  <script src="app.js"></script>
 </body>
 </html>
