@@ -32,16 +32,37 @@
       </div>
 
       <div class="campo">
-        <label for="categoria">Categoría</label>
-        <input id="categoria" name="categoria" type="text" placeholder="Ej. Fantasía" required>
-      </div>
-
-      <div class="campo">
         <label for="portada">Portada</label>
         <input id="portada" name="portada" type="file" accept="image/*">
         <div id="previewPortadaContenedor" class="preview-portada hidden">
           <img id="previewPortada" alt="Vista previa de la portada" class="preview-img">
         </div>
+      </div>
+
+      <div class="campo">
+        <label>Valoración</label>
+        <div id="valoracionEstrellas" class="estrellas" role="radiogroup" aria-label="Valoración del libro">
+          <button type="button" class="estrella" data-value="1" aria-label="1 estrella">★</button>
+          <button type="button" class="estrella" data-value="2" aria-label="2 estrellas">★</button>
+          <button type="button" class="estrella" data-value="3" aria-label="3 estrellas">★</button>
+          <button type="button" class="estrella" data-value="4" aria-label="4 estrellas">★</button>
+          <button type="button" class="estrella" data-value="5" aria-label="5 estrellas">★</button>
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="paginas">Número de páginas</label>
+        <input id="paginas" name="paginas" type="number" min="1" placeholder="Ej. 240">
+      </div>
+
+      <div class="campo">
+        <label for="fechaFin">Fecha de finalización</label>
+        <input id="fechaFin" name="fechaFin" type="date">
+      </div>
+
+      <div class="campo">
+        <label for="notas">Notas personales</label>
+        <textarea id="notas" name="notas" rows="3" placeholder="Añade tus impresiones, citas o ideas..."></textarea>
       </div>
 
       <div class="campo">
@@ -73,6 +94,13 @@
         </select>
       </div>
 
+      <div class="acciones-importacion">
+        <button type="button" id="btnExportar">Exportar JSON</button>
+        <button type="button" id="btnImportar">Importar JSON</button>
+        <input id="inputImportar" type="file" accept="application/json" class="hidden">
+      </div>
+
+      <div id="estadisticasBiblioteca" class="estadisticas"></div>
       <p id="contadorLibros" class="contador"></p>
       <div id="estadoVacio" class="estado-vacio hidden">No hay libros que coincidan con tu búsqueda.</div>
       <ul id="listaLibros"></ul>

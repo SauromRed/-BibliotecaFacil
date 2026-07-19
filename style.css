@@ -80,12 +80,14 @@ label {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   padding: 12px;
   border: 1px solid #cbd5e1;
@@ -93,10 +95,48 @@ select {
   background: white;
 }
 
+textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
 .acciones {
   display: flex;
   gap: 10px;
   margin-top: 6px;
+}
+
+.estrellas {
+  display: flex;
+  gap: 6px;
+}
+
+.estrella {
+  background: #f3f4f6;
+  color: #cbd5e1;
+  padding: 8px 10px;
+  font-size: 1.2rem;
+}
+
+.estrella.activa {
+  background: #fbbf24;
+  color: white;
+}
+
+.acciones-importacion {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.acciones-importacion button {
+  background: #0f766e;
+  color: white;
+}
+
+.acciones-importacion button:hover {
+  background: #115e59;
 }
 
 button {
@@ -144,6 +184,27 @@ button[type="submit"]:hover,
   margin: 0 0 12px;
   color: #6b7280;
   font-size: 0.95rem;
+}
+
+.estadisticas {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.estadistica-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.estadistica-card strong {
+  display: block;
+  font-size: 1.1rem;
+  margin-top: 4px;
+  color: #111827;
 }
 
 ul {
@@ -208,6 +269,12 @@ li {
   color: #4b5563;
 }
 
+.detalle-libro {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
 .categoria {
   font-size: 0.9rem;
   color: #64748b;
@@ -259,6 +326,10 @@ li {
     flex-direction: column;
   }
 
+  .estadisticas {
+    grid-template-columns: 1fr 1fr;
+  }
+
   li {
     flex-direction: column;
     align-items: flex-start;
@@ -270,5 +341,9 @@ li {
 
   .acciones-libro button {
     flex: 1;
+  }
+
+  .acciones-importacion {
+    flex-direction: column;
   }
 }
