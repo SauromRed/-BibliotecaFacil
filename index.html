@@ -11,11 +11,34 @@
     <header class="hero">
       <div>
         <h1>📚 BibliotecaFácil</h1>
-        <p>Organiza tus libros, encuentra tus favoritos y mantén tu progreso en un solo lugar.</p>
+        <p>Gestiona tu biblioteca y colección de cómics con escaneo ISBN, préstamos, listas de deseos, favoritos y estadísticas.</p>
       </div>
+      <button id="btnTheme" class="theme-toggle" type="button">🌙 Modo oscuro</button>
     </header>
 
     <form id="formLibro" class="formulario">
+      <div class="campo">
+        <label for="isbn">ISBN</label>
+        <div class="isbn-row">
+          <input id="isbn" name="isbn" type="text" placeholder="Ej. 9788467046118">
+          <button type="button" id="btnBuscarIsbn">Buscar ISBN</button>
+          <button type="button" id="btnEscanear">Escanear</button>
+        </div>
+        <div id="estadoBusqueda" class="estado-busqueda"></div>
+        <div id="scannerContainer" class="scanner hidden">
+          <video id="videoScanner" autoplay playsinline></video>
+          <button type="button" id="btnDetenerScanner" class="secundario">Cerrar cámara</button>
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="tipo">Tipo</label>
+        <select id="tipo" name="tipo">
+          <option value="book">Libro</option>
+          <option value="comic">Cómic</option>
+        </select>
+      </div>
+
       <div class="campo">
         <label for="titulo">Título</label>
         <input id="titulo" name="titulo" type="text" placeholder="Ej. El principito" required>
@@ -27,8 +50,45 @@
       </div>
 
       <div class="campo">
+        <label for="editorial">Editorial</label>
+        <input id="editorial" name="editorial" type="text" placeholder="Ej. Salamandra">
+      </div>
+
+      <div class="campo">
+        <label for="anio">Año</label>
+        <input id="anio" name="anio" type="number" min="1900" max="2100" placeholder="Ej. 1943">
+      </div>
+
+      <div class="campo">
         <label for="categoria">Categoría</label>
         <input id="categoria" name="categoria" type="text" placeholder="Ej. Fantasía" required>
+      </div>
+
+      <div id="camposComic" class="campo-grid hidden">
+        <div class="campo">
+          <label for="serie">Serie</label>
+          <input id="serie" name="serie" type="text" placeholder="Ej. Batman, One Piece">
+        </div>
+        <div class="campo">
+          <label for="numeroTomo">Número del tomo</label>
+          <input id="numeroTomo" name="numeroTomo" type="number" min="1" placeholder="Ej. 12">
+        </div>
+        <div class="campo">
+          <label for="volumen">Volumen</label>
+          <input id="volumen" name="volumen" type="text" placeholder="Ej. Vol. 1">
+        </div>
+        <div class="campo">
+          <label for="guionista">Guionista</label>
+          <input id="guionista" name="guionista" type="text" placeholder="Ej. Alan Moore">
+        </div>
+        <div class="campo">
+          <label for="dibujante">Dibujante</label>
+          <input id="dibujante" name="dibujante" type="text" placeholder="Ej. Dave Gibbons">
+        </div>
+        <div class="campo">
+          <label for="universo">Universo</label>
+          <input id="universo" name="universo" type="text" placeholder="Ej. Marvel, DC, Manga, Europeo">
+        </div>
       </div>
 
       <div class="campo">
@@ -61,8 +121,39 @@
       </div>
 
       <div class="campo">
+        <label for="personaPrestamo">Persona de préstamo</label>
+        <input id="personaPrestamo" name="personaPrestamo" type="text" placeholder="Ej. Marta">
+      </div>
+
+      <div class="campo">
+        <label for="fechaPrestamo">Fecha de préstamo</label>
+        <input id="fechaPrestamo" name="fechaPrestamo" type="date">
+      </div>
+
+      <div class="campo">
+        <label for="fechaDevolucion">Fecha de devolución</label>
+        <input id="fechaDevolucion" name="fechaDevolucion" type="date">
+      </div>
+
+      <div class="campo">
+        <label for="coleccion">Colección</label>
+        <input id="coleccion" name="coleccion" type="text" placeholder="Ej. Clásicos, Ciencia ficción">
+      </div>
+
+      <div class="campo">
         <label for="notas">Notas personales</label>
         <textarea id="notas" name="notas" rows="3" placeholder="Añade tus impresiones, citas o ideas..."></textarea>
+      </div>
+
+      <div class="campo check-row">
+        <label class="checkbox-row">
+          <input id="wishlist" type="checkbox">
+          <span>Lista de deseos</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="favorite" type="checkbox">
+          <span>Favorito</span>
+        </label>
       </div>
 
       <div class="campo">
@@ -92,6 +183,24 @@
           <option value="Reading">Leyendo</option>
           <option value="Pending">Pendientes</option>
         </select>
+        <select id="filtroColeccion">
+          <option value="todas">Todas las colecciones</option>
+        </select>
+        <select id="filtroTipo">
+          <option value="todos">Todos</option>
+          <option value="favorites">Favoritos</option>
+          <option value="wishlist">Lista de deseos</option>
+        </select>
+        <select id="filtroOrden">
+          <option value="default">Orden por defecto</option>
+          <option value="serie">Serie</option>
+          <option value="numero">Número</option>
+          <option value="autor">Autor</option>
+          <option value="editorial">Editorial</option>
+          <option value="fecha">Fecha</option>
+          <option value="valoracion">Valoración</option>
+        </select>
+        <button type="button" id="btnVistaSeries" class="pill-toggle">Agrupar por series</button>
       </div>
 
       <div class="acciones-importacion">
@@ -101,9 +210,10 @@
       </div>
 
       <div id="estadisticasBiblioteca" class="estadisticas"></div>
+      <div id="chartContainer" class="chart-container"></div>
       <p id="contadorLibros" class="contador"></p>
-      <div id="estadoVacio" class="estado-vacio hidden">No hay libros que coincidan con tu búsqueda.</div>
-      <ul id="listaLibros"></ul>
+      <div id="estadoVacio" class="estado-vacio hidden">No hay elementos que coincidan con tu búsqueda.</div>
+      <div id="listaLibros" class="lista-libros"></div>
     </section>
   </div>
 
