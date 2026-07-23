@@ -159,6 +159,18 @@ function mostrarEstado(mensaje) {
   estadoBusqueda.textContent = mensaje;
 }
 
+async function obtenerCamaraTrasera() {
+  try {
+    const cams = await window.Html5Qrcode.getCameras();
+    if (!Array.isArray(cams) || cams.length === 0) {
+      return null;
+    }
+    return cams.find((cam) => /rear|back|environment|trasera/i.test(cam.label)) || cams[0];
+  } catch (error) {
+    return null;
+  }
+}
+
 function obtenerEtiquetaEstado(status) {
   switch (status) {
     case "Reading":
@@ -196,6 +208,10 @@ function resetFormulario() {
   state.editandoId = null;
   toggleCamposComic();
   btnCancelar.classList.add("hidden");
+  btnLinterna.disabled = true;
+  btnDetenerScanner.disabled = true;
+  btnEscanear.disabled = false;
+  btnEscanearPrincipal.disabled = false;
   actualizarEstrellas();
 }
 
@@ -374,22 +390,19 @@ async function iniciarEscaneoIsbn() {
     return;
   }
 
+  if (state.scannerActivo) {
+    await detenerEscaneoIsbn();
+  }
+
   scannerContainer.classList.remove("hidden");
   mostrarEstado("Apunta la cámara al código ISBN...");
   state.scannerActivo = true;
+  btnEscanear.disabled = true;
+  btnEscanearPrincipal.disabled = true;
 
   try {
-    const cams = await window.Html5Qrcode.getCameras();
-    let cameraConfig = { facingMode: "environment" };
-
-    if (Array.isArray(cams) && cams.length > 0) {
-      const rearCamera = cams.find((cam) => /rear|back|environment|trasera/i.test(cam.label));
-      if (rearCamera?.id) {
-        cameraConfig = rearCamera.id;
-      } else if (cams.length === 1) {
-        cameraConfig = cams[0].id;
-      }
-    }
+    const camara = await obtenerCamaraTrasera();
+    const cameraConfig = camara?.id || { facingMode: "environment" };
 
     const scanner = new window.Html5Qrcode("videoScanner");
     state.scannerInstancia = scanner;
@@ -422,13 +435,19 @@ async function iniciarEscaneoIsbn() {
     );
 
     if (typeof scanner.toggleFlash === "function") {
-      await scanner.toggleFlash();
-      state.linternaActiva = true;
-      btnLinterna.textContent = "Apagar linterna";
+      btnLinterna.disabled = false;
+      btnLinterna.textContent = "Encender linterna";
+    } else {
+      btnLinterna.disabled = true;
     }
+    btnDetenerScanner.disabled = false;
   } catch (error) {
     mostrarEstado("No se pudo iniciar la cámara. Comprueba permisos o intenta de nuevo.");
     state.scannerActivo = false;
+    btnLinterna.disabled = true;
+    btnDetenerScanner.disabled = true;
+    btnEscanear.disabled = false;
+    btnEscanearPrincipal.disabled = false;
   }
 }
 
@@ -436,6 +455,10 @@ async function detenerEscaneoIsbn() {
   state.scannerActivo = false;
   scannerContainer.classList.add("hidden");
   btnLinterna.textContent = "Encender linterna";
+  btnLinterna.disabled = true;
+  btnDetenerScanner.disabled = true;
+  btnEscanear.disabled = false;
+  btnEscanearPrincipal.disabled = false;
   state.linternaActiva = false;
 
   if (state.scannerInstancia) {
