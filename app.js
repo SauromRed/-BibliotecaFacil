@@ -1,14 +1,20 @@
 const STORAGE_KEY = "bibliotecaFacilLibros";
 const BACKUP_KEY = "bibliotecaFacilBackups";
-let libros = [];
-let editandoId = null;
-let portadaSeleccionada = "";
-let valoracionSeleccionada = 0;
-let scannerActivo = false;
-let scannerStream = null;
-let scannerDetector = null;
+const THEME_KEY = "bibliotecaFacilTheme";
+
+const state = {
+  libros: [],
+  editandoId: null,
+  portadaSeleccionada: "",
+  ratingSeleccionada: 0,
+  scannerActivo: false,
+  scannerInstancia: null,
+  linternaActiva: false,
+  theme: "light"
+};
 
 const form = document.getElementById("formLibro");
+const formSection = document.getElementById("formSection");
 const inputIsbn = document.getElementById("isbn");
 const inputTipo = document.getElementById("tipo");
 const inputTitulo = document.getElementById("titulo");
@@ -47,82 +53,110 @@ const filtroOrden = document.getElementById("filtroOrden");
 const btnVistaSeries = document.getElementById("btnVistaSeries");
 const btnGuardar = document.getElementById("btnGuardar");
 const btnCancelar = document.getElementById("btnCancelar");
-const btnExportar = document.getElementById("btnExportar");
+const btnExportarJson = document.getElementById("btnExportarJson");
+const btnExportarCsv = document.getElementById("btnExportarCsv");
 const btnImportar = document.getElementById("btnImportar");
 const btnBuscarIsbn = document.getElementById("btnBuscarIsbn");
 const btnEscanear = document.getElementById("btnEscanear");
+const btnEscanearPrincipal = document.getElementById("btnEscanearPrincipal");
+const btnAgregarManual = document.getElementById("btnAgregarManual");
 const btnDetenerScanner = document.getElementById("btnDetenerScanner");
+const btnLinterna = document.getElementById("btnLinterna");
 const scannerContainer = document.getElementById("scannerContainer");
-const videoScanner = document.getElementById("videoScanner");
 const estadoBusqueda = document.getElementById("estadoBusqueda");
 const inputImportar = document.getElementById("inputImportar");
 const contadorLibros = document.getElementById("contadorLibros");
 const estadoVacio = document.getElementById("estadoVacio");
 const estadisticasBiblioteca = document.getElementById("estadisticasBiblioteca");
-const chartContainer = document.getElementById("chartContainer");
 const btnTheme = document.getElementById("btnTheme");
-
-function normalizarLibro(libro, index = 0) {
-  const tipo = libro.type === "comic" ? "comic" : "book";
-  return {
-    id: libro.id || `${Date.now()}-${index}`,
-    titulo: libro.titulo || libro.title || "",
-    autor: libro.autor || libro.author || "",
-    editorial: libro.editorial || libro.publisher || "",
-    year: libro.year || "",
-    categoria: libro.categoria || libro.category || "",
-    status: libro.status || "Pending",
-    cover: libro.cover || "",
-    rating: Number(libro.rating || 0),
-    pages: libro.pages || "",
-    finishDate: libro.finishDate || "",
-    notes: libro.notes || "",
-    isbn: libro.isbn || "",
-    loanTo: libro.loanTo || "",
-    loanDate: libro.loanDate || "",
-    returnDate: libro.returnDate || "",
-    wishlist: Boolean(libro.wishlist),
-    favorite: Boolean(libro.favorite),
-    collection: libro.collection || "",
-    type: tipo,
-    serie: libro.serie || libro.series || "",
-    issueNumber: libro.issueNumber || libro.numeroTomo || "",
-    volume: libro.volume || libro.volumen || "",
-    writer: libro.writer || libro.guionista || "",
-    artist: libro.artist || libro.dibujante || "",
-    universe: libro.universe || libro.universo || ""
-  };
-}
-
-function cargarLibros() {
-  try {
-    const guardado = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    libros = Array.isArray(guardado) ? guardado.map(normalizarLibro) : [];
-  } catch (error) {
-    libros = [];
-  }
-
-  if (libros.length === 0) {
-    const respaldo = JSON.parse(localStorage.getItem(BACKUP_KEY) || "null");
-    if (respaldo && Array.isArray(respaldo.libros)) {
-      libros = respaldo.libros.map(normalizarLibro);
-    }
-  }
-}
-
-function guardarLibros() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(libros));
-  const backup = { timestamp: new Date().toISOString(), libros: libros.map((libro) => ({ ...libro })) };
-  localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
-}
+const btnResetLibrary = document.getElementById("btnResetLibrary");
+const statsTotal = document.getElementById("statsTotal");
+const statsPaginas = document.getElementById("statsPaginas");
+const statsFavoritos = document.getElementById("statsFavoritos");
+const statsAutores = document.getElementById("statsAutores");
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function escapeCsv(value) {
+  const texto = String(value ?? "");
+  return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+function normalizarLibro(libro, index = 0) {
+  const tipo = String(libro?.type || "").toLowerCase() === "comic" ? "comic" : "book";
+  return {
+    id: String(libro?.id || `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`),
+    titulo: libro?.titulo || libro?.title || libro?.name || "",
+    autor: libro?.autor || libro?.author || libro?.authors || "",
+    editorial: libro?.editorial || libro?.publisher || "",
+    anio: libro?.anio || libro?.year || libro?.publicationYear || "",
+    categoria: libro?.categoria || libro?.category || libro?.genre || "",
+    status: libro?.status || "Pending",
+    cover: libro?.cover || libro?.thumbnail || "",
+    rating: Number(libro?.rating || 0),
+    paginas: libro?.paginas || libro?.pages || "",
+    fechaFin: libro?.fechaFin || libro?.finishDate || "",
+    notas: libro?.notas || libro?.notes || "",
+    isbn: libro?.isbn || libro?.isbn13 || "",
+    prestamoA: libro?.prestamoA || libro?.loanTo || "",
+    fechaPrestamo: libro?.fechaPrestamo || libro?.loanDate || "",
+    fechaDevolucion: libro?.fechaDevolucion || libro?.returnDate || "",
+    wishlist: Boolean(libro?.wishlist),
+    favorite: Boolean(libro?.favorite),
+    collection: libro?.collection || "",
+    type: tipo,
+    serie: libro?.serie || libro?.series || "",
+    issueNumber: libro?.issueNumber || libro?.numeroTomo || "",
+    volume: libro?.volume || libro?.volumen || "",
+    writer: libro?.writer || libro?.guionista || "",
+    artist: libro?.artist || libro?.dibujante || "",
+    universe: libro?.universe || libro?.universo || "",
+    language: libro?.language || libro?.idioma || "",
+    genre: libro?.genre || libro?.genero || "",
+    description: libro?.description || libro?.descripcion || "",
+    createdAt: libro?.createdAt || new Date().toISOString(),
+    updatedAt: libro?.updatedAt || new Date().toISOString()
+  };
+}
+
+function cargarLibros() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    state.libros = Array.isArray(guardado) ? guardado.map(normalizarLibro) : [];
+  } catch (error) {
+    state.libros = [];
+  }
+
+  if (state.libros.length === 0) {
+    try {
+      const respaldo = JSON.parse(localStorage.getItem(BACKUP_KEY) || "null");
+      if (respaldo && Array.isArray(respaldo.libros)) {
+        state.libros = respaldo.libros.map(normalizarLibro);
+      }
+    } catch (error) {
+      state.libros = [];
+    }
+  }
+}
+
+function guardarLibros() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.libros));
+  const backup = {
+    timestamp: new Date().toISOString(),
+    libros: state.libros.map((libro) => ({ ...libro }))
+  };
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
+}
+
+function mostrarEstado(mensaje) {
+  estadoBusqueda.textContent = mensaje;
 }
 
 function obtenerEtiquetaEstado(status) {
@@ -137,11 +171,11 @@ function obtenerEtiquetaEstado(status) {
 }
 
 function actualizarTextoGuardar() {
-  if (editandoId) {
-    btnGuardar.textContent = "Guardar cambios";
-    return;
-  }
-  btnGuardar.textContent = inputTipo.value === "comic" ? "Añadir cómic" : "Añadir libro";
+  btnGuardar.textContent = state.editandoId
+    ? "Guardar cambios"
+    : inputTipo.value === "comic"
+      ? "Añadir cómic"
+      : "Añadir libro";
 }
 
 function toggleCamposComic() {
@@ -154,19 +188,19 @@ function resetFormulario() {
   form.reset();
   inputTipo.value = "book";
   selectEstado.value = "Read";
-  valoracionSeleccionada = 0;
-  portadaSeleccionada = "";
+  state.ratingSeleccionada = 0;
+  state.portadaSeleccionada = "";
   previewPortada.src = "";
   previewPortadaContenedor.classList.add("hidden");
   inputPortada.value = "";
-  editandoId = null;
+  state.editandoId = null;
   toggleCamposComic();
   btnCancelar.classList.add("hidden");
   actualizarEstrellas();
 }
 
 function actualizarOpcionesCategorias() {
-  const categorias = [...new Set(libros.map((libro) => String(libro.categoria || "").trim()).filter(Boolean))].sort();
+  const categorias = [...new Set(state.libros.map((libro) => String(libro.categoria || "").trim()).filter(Boolean))].sort();
   const categoriaActual = filtroCategoria.value;
 
   filtroCategoria.innerHTML = '<option value="todas">Todas las categorías</option>';
@@ -185,7 +219,7 @@ function actualizarOpcionesCategorias() {
 }
 
 function actualizarOpcionesColecciones() {
-  const colecciones = [...new Set(libros.map((libro) => String(libro.collection || "").trim()).filter(Boolean))].sort();
+  const colecciones = [...new Set(state.libros.map((libro) => String(libro.collection || "").trim()).filter(Boolean))].sort();
   const coleccionActual = filtroColeccion.value;
 
   filtroColeccion.innerHTML = '<option value="todas">Todas las colecciones</option>';
@@ -207,12 +241,12 @@ function actualizarEstrellas() {
   const botones = estrellas.querySelectorAll(".estrella");
   botones.forEach((boton) => {
     const value = Number(boton.dataset.value);
-    boton.classList.toggle("activa", value <= valoracionSeleccionada);
+    boton.classList.toggle("activa", value <= state.ratingSeleccionada);
   });
 }
 
 function mostrarPreviewPortada(dataUrl) {
-  portadaSeleccionada = dataUrl;
+  state.portadaSeleccionada = dataUrl;
   previewPortada.src = dataUrl;
   previewPortadaContenedor.classList.remove("hidden");
 }
@@ -223,7 +257,7 @@ function manejarSeleccionPortada(event) {
     return;
   }
   if (!archivo.type.startsWith("image/")) {
-    alert("Selecciona un archivo de imagen válido.");
+    alert("Selecciona una imagen válida.");
     inputPortada.value = "";
     return;
   }
@@ -232,185 +266,251 @@ function manejarSeleccionPortada(event) {
   lector.readAsDataURL(archivo);
 }
 
-function mostrarEstadoBusqueda(mensaje) {
-  estadoBusqueda.textContent = mensaje;
-}
-
-async function buscarLibroPorISBN(isbn) {
+async function buscarDatosLibro(isbn) {
   const valor = isbn.trim();
   if (!valor) {
     return;
   }
 
-  mostrarEstadoBusqueda("Buscando datos en Open Library...");
+  mostrarEstado("Buscando datos del ISBN...");
 
-  try {
-    const respuesta = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(valor)}&jscmd=data&format=json`);
-    if (!respuesta.ok) {
-      throw new Error("No se pudo recuperar la información");
+  const servicios = [
+    async () => {
+      const respuesta = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(valor)}`);
+      if (!respuesta.ok) {
+        throw new Error("Google Books no responde");
+      }
+      const data = await respuesta.json();
+      const item = data.items?.[0];
+      if (!item) {
+        throw new Error("Google Books sin resultados");
+      }
+      const volumen = item.volumeInfo || {};
+      return {
+        titulo: volumen.title || "",
+        autor: (volumen.authors || []).join(", "),
+        editorial: volumen.publisher || "",
+        anio: volumen.publishedDate ? String(volumen.publishedDate).slice(0, 4) : "",
+        categoria: (volumen.categories || [])[0] || "",
+        cover: volumen.imageLinks?.extraLarge || volumen.imageLinks?.large || volumen.imageLinks?.medium || volumen.imageLinks?.thumbnail || "",
+        paginas: volumen.pageCount || "",
+        language: volumen.language || "",
+        description: volumen.description || "",
+        genre: (volumen.categories || [])[0] || ""
+      };
+    },
+    async () => {
+      const respuesta = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(valor)}.json`);
+      if (!respuesta.ok) {
+        throw new Error("Open Library no responde");
+      }
+      const libro = await respuesta.json();
+      return {
+        titulo: libro.title || "",
+        autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
+        editorial: libro.publishers?.[0]?.name || "",
+        anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
+        cover: libro.covers?.[0] ? `https://covers.openlibrary.org/b/id/${libro.covers[0]}-L.jpg` : "",
+        paginas: libro.number_of_pages || "",
+        description: libro.excerpts?.[0]?.excerpt || ""
+      };
+    },
+    async () => {
+      const respuesta = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(valor)}&jscmd=data&format=json`);
+      if (!respuesta.ok) {
+        throw new Error("Open Library fallback no responde");
+      }
+      const data = await respuesta.json();
+      const libro = data[`ISBN:${valor}`];
+      if (!libro) {
+        throw new Error("ISBN no encontrado");
+      }
+      return {
+        titulo: libro.title || "",
+        autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
+        editorial: (libro.publishers || []).map((editorial) => editorial.name || editorial).join(", "),
+        anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
+        cover: libro.cover?.large || libro.cover?.medium || libro.cover?.small || "",
+        paginas: libro.number_of_pages || "",
+        description: libro.subtitle || ""
+      };
     }
-    const data = await respuesta.json();
-    const libro = data[`ISBN:${valor}`];
+  ];
 
-    if (!libro) {
-      throw new Error("ISBN no encontrado");
+  for (const servicio of servicios) {
+    try {
+      const datos = await servicio();
+      llenarFormularioConDatos(datos);
+      mostrarEstado("Datos cargados automáticamente desde una fuente externa.");
+      return;
+    } catch (error) {
+      // Se prueba el siguiente servicio automáticamente.
     }
+  }
 
-    inputTitulo.value = libro.title || inputTitulo.value;
-    inputAutor.value = (libro.authors || []).map((autor) => autor.name).join(", ") || inputAutor.value;
-    inputEditorial.value = (libro.publishers || []).map((editorial) => editorial.name || editorial).join(", ") || inputEditorial.value;
-    inputAnio.value = libro.publish_date ? libro.publish_date.match(/\d{4}/)?.[0] || "" : inputAnio.value;
-    const coverUrl = libro.cover?.large || libro.cover?.medium || libro.cover?.small || `https://covers.openlibrary.org/b/isbn/${valor}-L.jpg`;
-    if (coverUrl) {
-      portadaSeleccionada = coverUrl;
-      previewPortada.src = coverUrl;
-      previewPortadaContenedor.classList.remove("hidden");
-    }
+  mostrarEstado("No se pudieron recuperar los datos automáticamente. Puedes completarlos manualmente.");
+}
 
-    mostrarEstadoBusqueda("Datos cargados automáticamente desde Open Library.");
-  } catch (error) {
-    mostrarEstadoBusqueda("No se pudieron cargar los datos automáticamente. Puedes completarlos manualmente.");
+function llenarFormularioConDatos(datos) {
+  if (datos.titulo) inputTitulo.value = datos.titulo;
+  if (datos.autor) inputAutor.value = datos.autor;
+  if (datos.editorial) inputEditorial.value = datos.editorial;
+  if (datos.anio) inputAnio.value = datos.anio;
+  if (datos.categoria) inputCategoria.value = datos.categoria;
+  if (datos.paginas) inputPaginas.value = datos.paginas;
+  if (datos.language) inputNotas.value = `${inputNotas.value}\nIdioma: ${datos.language}`.trim();
+  if (datos.genre) inputCategoria.value = datos.genre;
+  if (datos.description) inputNotas.value = `${inputNotas.value}\n${datos.description}`.trim();
+  if (datos.cover) {
+    state.portadaSeleccionada = datos.cover;
+    previewPortada.src = datos.cover;
+    previewPortadaContenedor.classList.remove("hidden");
   }
 }
 
 async function iniciarEscaneoIsbn() {
-  if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) {
-    mostrarEstadoBusqueda("Tu navegador no admite escaneo de cámara. Puedes introducir el ISBN manualmente.");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    mostrarEstado("La cámara no está disponible en este navegador.");
     return;
   }
 
   scannerContainer.classList.remove("hidden");
-  mostrarEstadoBusqueda("Apunta la cámara al código ISBN...");
-  scannerActivo = true;
+  mostrarEstado("Apunta la cámara al código ISBN...");
+  state.scannerActivo = true;
 
   try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    videoScanner.srcObject = scannerStream;
-    await videoScanner.play();
-
-    if (!scannerDetector) {
-      scannerDetector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128"] });
+    const cams = await window.Html5Qrcode.getCameras();
+    const camara = cams.find((cam) => /back|environment|rear/i.test(cam.label)) || cams[0];
+    if (!camara) {
+      throw new Error("No hay cámaras disponibles");
     }
 
-    const scan = async () => {
-      if (!scannerActivo) {
-        return;
-      }
-      try {
-        const codigos = await scannerDetector.detect(videoScanner);
-        if (codigos.length > 0) {
-          const valor = codigos[0].rawValue;
-          if (valor) {
-            scannerActivo = false;
-            await detenerEscaneoIsbn();
-            inputIsbn.value = valor;
-            await buscarLibroPorISBN(valor);
-            return;
-          }
-        }
-      } catch (error) {
-        // Ignorar errores del escáner y seguir intentando.
-      }
-      window.setTimeout(scan, 1000);
-    };
+    const scanner = new window.Html5Qrcode("videoScanner");
+    state.scannerInstancia = scanner;
 
-    scan();
+    await scanner.start(
+      camara.id || { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: { width: 240, height: 160 },
+        formatsToSupport: [window.Html5QrcodeSupportedFormats.EAN_13, window.Html5QrcodeSupportedFormats.EAN_8]
+      },
+      async (decodedText) => {
+        if (!state.scannerActivo) {
+          return;
+        }
+        const isbn = decodedText.replace(/[^0-9Xx]/g, "");
+        if (!isbn) {
+          return;
+        }
+        if (navigator.vibrate) {
+          navigator.vibrate(120);
+        }
+        inputIsbn.value = isbn;
+        state.scannerActivo = false;
+        mostrarEstado("ISBN detectado. Cargando datos...");
+        await detenerEscaneoIsbn();
+        await buscarDatosLibro(isbn);
+      },
+      () => {}
+    );
+
+    if (typeof scanner.toggleFlash === "function") {
+      await scanner.toggleFlash();
+      state.linternaActiva = true;
+      btnLinterna.textContent = "Apagar linterna";
+    }
   } catch (error) {
-    mostrarEstadoBusqueda("No se pudo iniciar la cámara. Intenta de nuevo o introduce el ISBN manualmente.");
-    await detenerEscaneoIsbn();
+    mostrarEstado("No se pudo iniciar la cámara. Comprueba permisos o intenta de nuevo.");
+    state.scannerActivo = false;
   }
 }
 
 async function detenerEscaneoIsbn() {
-  scannerActivo = false;
+  state.scannerActivo = false;
   scannerContainer.classList.add("hidden");
-  if (scannerStream) {
-    scannerStream.getTracks().forEach((track) => track.stop());
-    scannerStream = null;
+  btnLinterna.textContent = "Encender linterna";
+  state.linternaActiva = false;
+
+  if (state.scannerInstancia) {
+    try {
+      await state.scannerInstancia.stop();
+      await state.scannerInstancia.clear();
+    } catch (error) {
+      // Ignorar si ya estaba cerrada.
+    }
+    state.scannerInstancia = null;
   }
-  if (videoScanner.srcObject) {
-    videoScanner.srcObject = null;
+}
+
+async function alternarLinterna() {
+  if (!state.scannerInstancia || typeof state.scannerInstancia.toggleFlash !== "function") {
+    mostrarEstado("La linterna no está disponible en este dispositivo.");
+    return;
+  }
+  try {
+    await state.scannerInstancia.toggleFlash();
+    state.linternaActiva = !state.linternaActiva;
+    btnLinterna.textContent = state.linternaActiva ? "Apagar linterna" : "Encender linterna";
+  } catch (error) {
+    mostrarEstado("No se pudo controlar la linterna.");
   }
 }
 
 function compararPorCampo(a, b, orden) {
   switch (orden) {
-    case "serie":
-      return String(a.serie || "").localeCompare(String(b.serie || ""), "es", { sensitivity: "base" });
-    case "numero": {
-      const numeroA = Number(a.issueNumber || 0);
-      const numeroB = Number(b.issueNumber || 0);
-      if (numeroA !== numeroB) {
-        return numeroA - numeroB;
-      }
+    case "titulo":
       return String(a.titulo || "").localeCompare(String(b.titulo || ""), "es", { sensitivity: "base" });
-    }
     case "autor":
       return String(a.autor || "").localeCompare(String(b.autor || ""), "es", { sensitivity: "base" });
-    case "editorial":
-      return String(a.editorial || "").localeCompare(String(b.editorial || ""), "es", { sensitivity: "base" });
-    case "fecha": {
-      const fechaA = a.finishDate || a.year || "";
-      const fechaB = b.finishDate || b.year || "";
-      return String(fechaA).localeCompare(String(fechaB), "es", { sensitivity: "base" });
-    }
-    case "valoracion":
-      return Number(b.rating || 0) - Number(a.rating || 0);
+    case "fecha":
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""), "es", { sensitivity: "base" });
+    case "anio":
+      return Number(String(b.anio || "0")) - Number(String(a.anio || "0"));
     default:
       return 0;
   }
 }
 
+function renderResumen() {
+  const total = state.libros.length;
+  const paginas = state.libros.reduce((sum, libro) => sum + Number(libro.paginas || 0), 0);
+  const favoritos = state.libros.filter((libro) => libro.favorite).length;
+  const autores = [...new Set(state.libros.map((libro) => String(libro.autor || "").trim()).filter(Boolean))];
+
+  statsTotal.textContent = total;
+  statsPaginas.textContent = paginas;
+  statsFavoritos.textContent = favoritos;
+  statsAutores.textContent = autores.length;
+}
+
 function renderEstadisticas() {
-  const total = libros.length;
-  const librosCount = libros.filter((libro) => libro.type !== "comic").length;
-  const comicsCount = libros.filter((libro) => libro.type === "comic").length;
-  const leidos = libros.filter((libro) => libro.status === "Read").length;
-  const leyendo = libros.filter((libro) => libro.status === "Reading").length;
-  const pendientes = libros.filter((libro) => libro.status === "Pending").length;
-  const ratings = libros.map((libro) => Number(libro.rating || 0)).filter((valor) => valor > 0);
-  const promedio = ratings.length > 0 ? (ratings.reduce((acum, valor) => acum + valor, 0) / ratings.length).toFixed(1) : "0.0";
-  const paginasLeidas = libros.filter((libro) => libro.status === "Read").reduce((acum, libro) => acum + Number(libro.pages || 0), 0);
-  const loansActivos = libros.filter((libro) => libro.loanTo && !libro.returnDate).length;
-  const favoritosLibros = libros.filter((libro) => libro.type !== "comic" && libro.favorite).length;
-  const favoritosComics = libros.filter((libro) => libro.type === "comic" && libro.favorite).length;
-  const wishlist = libros.filter((libro) => libro.wishlist).length;
+  const totalLibros = state.libros.length;
+  const paginasTotales = state.libros.reduce((sum, libro) => sum + Number(libro.paginas || 0), 0);
+  const autores = [...new Set(state.libros.map((libro) => String(libro.autor || "").trim()).filter(Boolean))].slice(0, 4);
+  const editoriales = [...new Set(state.libros.map((libro) => String(libro.editorial || "").trim()).filter(Boolean))].slice(0, 4);
+  const generos = [...new Set(state.libros.map((libro) => String(libro.genre || libro.categoria || "").trim()).filter(Boolean))].slice(0, 4);
+  const idiomas = [...new Set(state.libros.map((libro) => String(libro.language || "").trim()).filter(Boolean))].slice(0, 4);
 
   estadisticasBiblioteca.innerHTML = `
-    <div class="estadistica-card"><span>Libros</span><strong>${librosCount}</strong></div>
-    <div class="estadistica-card"><span>Cómics</span><strong>${comicsCount}</strong></div>
-    <div class="estadistica-card"><span>Total colección</span><strong>${total}</strong></div>
-    <div class="estadistica-card"><span>Páginas leídas</span><strong>${paginasLeidas}</strong></div>
-    <div class="estadistica-card"><span>Valoración media</span><strong>${promedio}★</strong></div>
-    <div class="estadistica-card"><span>Favoritos libros</span><strong>${favoritosLibros}</strong></div>
-    <div class="estadistica-card"><span>Favoritos cómics</span><strong>${favoritosComics}</strong></div>
-    <div class="estadistica-card"><span>Préstamos activos</span><strong>${loansActivos}</strong></div>
-  `;
-
-  const totals = { Libros: librosCount, Cómics: comicsCount, Leídos: leidos };
-  const maxValue = Math.max(...Object.values(totals), 1);
-  chartContainer.innerHTML = `
-    <svg viewBox="0 0 320 180" role="img" aria-label="Estadísticas de la colección">
-      ${Object.entries(totals).map(([label, value], index) => {
-        const barHeight = (value / maxValue) * 120;
-        const x = 40 + index * 100;
-        const y = 140 - barHeight;
-        return `<g>
-          <rect x="${x}" y="${y}" width="40" height="${barHeight}" rx="6" fill="${index === 0 ? "#2563eb" : index === 1 ? "#f59e0b" : "#10b981"}"></rect>
-          <text x="${x + 20}" y="160" text-anchor="middle" fill="currentColor" font-size="12">${label}</text>
-          <text x="${x + 20}" y="${y - 8}" text-anchor="middle" fill="currentColor" font-size="12">${value}</text>
-        </g>`;
-      }).join("")}
-    </svg>
+    <div class="estadistica-card"><span>Total de libros</span><strong>${totalLibros}</strong></div>
+    <div class="estadistica-card"><span>Total de páginas</span><strong>${paginasTotales}</strong></div>
+    <div class="estadistica-card"><span>Autores frecuentes</span><strong>${autores.join(", ") || "—"}</strong></div>
+    <div class="estadistica-card"><span>Editoriales</span><strong>${editoriales.join(", ") || "—"}</strong></div>
+    <div class="estadistica-card"><span>Géneros</span><strong>${generos.join(", ") || "—"}</strong></div>
+    <div class="estadistica-card"><span>Idiomas</span><strong>${idiomas.join(", ") || "—"}</strong></div>
   `;
 }
 
 function crearElementoItem(libro) {
   const item = document.createElement("article");
   item.className = "libro-card";
-  const portada = libro.cover ? `<img class="portada-mini" src="${escapeHtml(libro.cover)}" alt="Portada de ${escapeHtml(libro.titulo)}">` : `<div class="portada-placeholder">Sin portada</div>`;
-  const loanInfo = libro.loanTo ? `<p class="detalle-libro">Préstamo a ${escapeHtml(libro.loanTo)}${libro.returnDate ? ` · devolución ${escapeHtml(libro.returnDate)}` : ""}</p>` : "";
-  const tipoEtiqueta = libro.type === "comic" ? "Cómic" : "Libro";
+  const portada = libro.cover
+    ? `<img class="portada-mini" src="${escapeHtml(libro.cover)}" alt="Portada de ${escapeHtml(libro.titulo)}">`
+    : `<div class="portada-placeholder">Sin portada</div>`;
+  const loanInfo = libro.prestamoA
+    ? `<p class="detalle-libro">Prestado a ${escapeHtml(libro.prestamoA)}${libro.fechaDevolucion ? ` · devolución ${escapeHtml(libro.fechaDevolucion)}` : ""}</p>`
+    : "";
   const detalleComic = libro.type === "comic" ? `
     ${libro.serie ? `<p class="detalle-libro">Serie: ${escapeHtml(libro.serie)}</p>` : ""}
     ${libro.issueNumber ? `<p class="detalle-libro">Tomo: ${escapeHtml(libro.issueNumber)}</p>` : ""}
@@ -427,14 +527,14 @@ function crearElementoItem(libro) {
           <strong>${escapeHtml(libro.titulo)}</strong>
           <span class="estado-badge">${escapeHtml(obtenerEtiquetaEstado(libro.status))}</span>
         </div>
-        <p>${escapeHtml(libro.autor)}</p>
-        <p class="categoria">${escapeHtml(tipoEtiqueta)} · ${escapeHtml(libro.categoria || "Sin categoría")}</p>
-        <p class="detalle-libro">${Number(libro.rating || 0) > 0 ? `⭐ ${libro.rating}/5` : "Sin valoración"}${libro.pages ? ` · ${libro.pages} págs.` : ""}${libro.finishDate ? ` · Finalizado: ${escapeHtml(libro.finishDate)}` : ""}</p>
+        <p>${escapeHtml(libro.autor || "Autor desconocido")}</p>
+        <p class="categoria">${escapeHtml(libro.type === "comic" ? "Cómic" : "Libro")} · ${escapeHtml(libro.categoria || "Sin categoría")}</p>
+        <p class="detalle-libro">${Number(libro.rating || 0) > 0 ? `⭐ ${libro.rating}/5` : "Sin valoración"}${libro.paginas ? ` · ${libro.paginas} págs.` : ""}${libro.anio ? ` · ${libro.anio}` : ""}</p>
         ${detalleComic}
         ${libro.editorial ? `<p class="detalle-libro">Editorial: ${escapeHtml(libro.editorial)}</p>` : ""}
         ${libro.collection ? `<p class="detalle-libro">Colección: ${escapeHtml(libro.collection)}</p>` : ""}
         ${loanInfo}
-        ${libro.notes ? `<p class="detalle-libro">Notas: ${escapeHtml(libro.notes)}</p>` : ""}
+        ${libro.notas ? `<p class="detalle-libro">Notas: ${escapeHtml(libro.notas)}</p>` : ""}
       </div>
     </div>
     <div class="acciones-libro">
@@ -450,6 +550,7 @@ function crearElementoItem(libro) {
 function renderLibros() {
   actualizarOpcionesCategorias();
   actualizarOpcionesColecciones();
+  renderResumen();
   renderEstadisticas();
 
   const texto = buscador.value.trim().toLowerCase();
@@ -460,19 +561,17 @@ function renderLibros() {
   const ordenSeleccionado = filtroOrden.value;
   const mostrarPorSeries = btnVistaSeries.classList.contains("active");
 
-  const librosFiltrados = libros.filter((libro) => {
-    const textoEnLibro = `${libro.titulo} ${libro.autor} ${libro.categoria} ${libro.collection || ""} ${libro.serie || ""} ${libro.notes || ""}`.toLowerCase();
+  const librosFiltrados = state.libros.filter((libro) => {
+    const textoEnLibro = `${libro.titulo} ${libro.autor} ${libro.editorial} ${libro.isbn} ${libro.categoria} ${libro.collection || ""} ${libro.serie || ""} ${libro.genre || ""} ${libro.language || ""}`.toLowerCase();
     const coincideTexto = textoEnLibro.includes(texto);
     const coincideCategoria = categoriaSeleccionada === "todas" || String(libro.categoria || "").toLowerCase() === categoriaSeleccionada.toLowerCase();
     const coincideEstado = estadoSeleccionado === "todos" || libro.status === estadoSeleccionado;
     const coincideColeccion = coleccionSeleccionada === "todas" || String(libro.collection || "") === coleccionSeleccionada;
     const coincideTipo = tipoSeleccionado === "todos" || (tipoSeleccionado === "favorites" && libro.favorite) || (tipoSeleccionado === "wishlist" && libro.wishlist);
-
     return coincideTexto && coincideCategoria && coincideEstado && coincideColeccion && coincideTipo;
   });
 
   const ordenados = [...librosFiltrados].sort((a, b) => compararPorCampo(a, b, ordenSeleccionado));
-
   contadorLibros.textContent = `${ordenados.length} elemento${ordenados.length === 1 ? "" : "s"} en tu colección`;
 
   if (ordenados.length === 0) {
@@ -484,6 +583,8 @@ function renderLibros() {
   estadoVacio.classList.add("hidden");
   listaLibros.innerHTML = "";
 
+  const fragmento = document.createDocumentFragment();
+
   if (mostrarPorSeries && ordenados.some((libro) => libro.type === "comic")) {
     const grupos = new Map();
     ordenados.filter((libro) => libro.type === "comic").forEach((libro) => {
@@ -494,21 +595,18 @@ function renderLibros() {
       grupos.get(clave).push(libro);
     });
 
-    const gruposOrdenados = [...grupos.entries()].sort(([serieA], [serieB]) => String(serieA).localeCompare(String(serieB), "es", { sensitivity: "base" }));
-
-    gruposOrdenados.forEach(([serie, itemsSerie]) => {
+    [...grupos.entries()].sort(([serieA], [serieB]) => String(serieA).localeCompare(String(serieB), "es", { sensitivity: "base" })).forEach(([serie, itemsSerie]) => {
       const grupo = document.createElement("section");
       grupo.className = "serie-group";
       const header = document.createElement("div");
       header.className = "serie-header";
       header.innerHTML = `<h3>${escapeHtml(serie)}</h3><span>${itemsSerie.length} tomo${itemsSerie.length === 1 ? "" : "s"}</span>`;
       grupo.appendChild(header);
-
       const contenedor = document.createElement("div");
       contenedor.className = "serie-items";
-      itemsSerie.sort((a, b) => compararPorCampo(a, b, "numero")).forEach((libro) => contenedor.appendChild(crearElementoItem(libro)));
+      itemsSerie.sort((a, b) => Number(a.issueNumber || 0) - Number(b.issueNumber || 0)).forEach((libro) => contenedor.appendChild(crearElementoItem(libro)));
       grupo.appendChild(contenedor);
-      listaLibros.appendChild(grupo);
+      fragmento.appendChild(grupo);
     });
 
     const librosSimples = ordenados.filter((libro) => libro.type !== "comic");
@@ -520,12 +618,13 @@ function renderLibros() {
       contenedor.className = "serie-items";
       librosSimples.forEach((libro) => contenedor.appendChild(crearElementoItem(libro)));
       seccionLibros.appendChild(contenedor);
-      listaLibros.appendChild(seccionLibros);
+      fragmento.appendChild(seccionLibros);
     }
-    return;
+  } else {
+    ordenados.forEach((libro) => fragmento.appendChild(crearElementoItem(libro)));
   }
 
-  ordenados.forEach((libro) => listaLibros.appendChild(crearElementoItem(libro)));
+  listaLibros.appendChild(fragmento);
 }
 
 function guardarLibro(event) {
@@ -540,7 +639,7 @@ function guardarLibro(event) {
   const notes = inputNotas.value.trim();
   const isbn = inputIsbn.value.trim();
   const editorial = inputEditorial.value.trim();
-  const year = inputAnio.value.trim();
+  const anio = inputAnio.value.trim();
   const loanTo = inputPersonaPrestamo.value.trim();
   const loanDate = inputFechaPrestamo.value;
   const returnDate = inputFechaDevolucion.value;
@@ -560,22 +659,22 @@ function guardarLibro(event) {
     return;
   }
 
-  const cover = portadaSeleccionada || (editandoId ? libros.find((libro) => libro.id === editandoId)?.cover || "" : "");
+  const cover = state.portadaSeleccionada || (state.editandoId ? state.libros.find((libro) => libro.id === state.editandoId)?.cover || "" : "");
   const libroBase = {
     titulo,
     autor,
     editorial,
-    year,
+    anio,
     categoria,
     status,
-    rating: valoracionSeleccionada,
-    pages,
-    finishDate,
-    notes,
+    rating: state.ratingSeleccionada,
+    paginas: pages,
+    fechaFin: finishDate,
+    notas: notes,
     isbn,
-    loanTo,
-    loanDate,
-    returnDate,
+    prestamoA: loanTo,
+    fechaPrestamo: loanDate,
+    fechaDevolucion: returnDate,
     wishlist,
     favorite,
     collection,
@@ -589,13 +688,15 @@ function guardarLibro(event) {
     universe,
     title: titulo,
     author: autor,
-    category: categoria
+    category: categoria,
+    createdAt: state.editandoId ? state.libros.find((libro) => libro.id === state.editandoId)?.createdAt || new Date().toISOString() : new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
-  if (editandoId) {
-    libros = libros.map((libro) => (libro.id === editandoId ? { ...libro, ...libroBase } : libro));
+  if (state.editandoId) {
+    state.libros = state.libros.map((libro) => (libro.id === state.editandoId ? { ...libro, ...libroBase } : libro));
   } else {
-    libros.unshift({ id: Date.now().toString(), ...libroBase });
+    state.libros.unshift({ id: Date.now().toString(), ...libroBase });
   }
 
   guardarLibros();
@@ -604,7 +705,7 @@ function guardarLibro(event) {
 }
 
 function editarLibro(id) {
-  const libro = libros.find((item) => item.id === id);
+  const libro = state.libros.find((item) => item.id === id);
   if (!libro) {
     return;
   }
@@ -614,7 +715,7 @@ function editarLibro(id) {
   inputTitulo.value = libro.titulo || "";
   inputAutor.value = libro.autor || "";
   inputEditorial.value = libro.editorial || "";
-  inputAnio.value = libro.year || "";
+  inputAnio.value = libro.anio || "";
   inputCategoria.value = libro.categoria || "";
   inputSerie.value = libro.serie || "";
   inputNumeroTomo.value = libro.issueNumber || "";
@@ -622,19 +723,19 @@ function editarLibro(id) {
   inputGuionista.value = libro.writer || "";
   inputDibujante.value = libro.artist || "";
   inputUniverso.value = libro.universe || "";
-  inputPaginas.value = libro.pages || "";
-  inputFechaFin.value = libro.finishDate || "";
-  inputPersonaPrestamo.value = libro.loanTo || "";
-  inputFechaPrestamo.value = libro.loanDate || "";
-  inputFechaDevolucion.value = libro.returnDate || "";
+  inputPaginas.value = libro.paginas || "";
+  inputFechaFin.value = libro.fechaFin || "";
+  inputPersonaPrestamo.value = libro.prestamoA || "";
+  inputFechaPrestamo.value = libro.fechaPrestamo || "";
+  inputFechaDevolucion.value = libro.fechaDevolucion || "";
   inputColeccion.value = libro.collection || "";
-  inputNotas.value = libro.notes || "";
+  inputNotas.value = libro.notas || "";
   checkboxWishlist.checked = Boolean(libro.wishlist);
   checkboxFavorite.checked = Boolean(libro.favorite);
   selectEstado.value = libro.status || "Pending";
-  valoracionSeleccionada = Number(libro.rating || 0);
+  state.ratingSeleccionada = Number(libro.rating || 0);
   actualizarEstrellas();
-  portadaSeleccionada = libro.cover || "";
+  state.portadaSeleccionada = libro.cover || "";
   if (libro.cover) {
     previewPortada.src = libro.cover;
     previewPortadaContenedor.classList.remove("hidden");
@@ -643,10 +744,11 @@ function editarLibro(id) {
     previewPortadaContenedor.classList.add("hidden");
   }
   inputPortada.value = "";
-  editandoId = libro.id;
+  state.editandoId = libro.id;
   toggleCamposComic();
   btnCancelar.classList.remove("hidden");
   btnGuardar.textContent = "Guardar cambios";
+  formSection.scrollIntoView({ behavior: "smooth", block: "start" });
   inputTitulo.focus();
 }
 
@@ -655,34 +757,73 @@ function eliminarLibro(id) {
   if (!confirmar) {
     return;
   }
-  libros = libros.filter((libro) => libro.id !== id);
+  state.libros = state.libros.filter((libro) => libro.id !== id);
   guardarLibros();
-  if (editandoId === id) {
+  if (state.editandoId === id) {
     resetFormulario();
   }
   renderLibros();
 }
 
 function alternarMarca(id, campo) {
-  libros = libros.map((libro) => {
-    if (libro.id === id) {
-      return { ...libro, [campo]: !libro[campo] };
-    }
-    return libro;
-  });
+  state.libros = state.libros.map((libro) => (libro.id === id ? { ...libro, [campo]: !libro[campo] } : libro));
   guardarLibros();
   renderLibros();
 }
 
-function exportarBiblioteca() {
-  const contenido = JSON.stringify(libros, null, 2);
-  const blob = new Blob([contenido], { type: "application/json" });
+function descargarArchivo(contenido, nombre, tipo) {
+  const blob = new Blob([contenido], { type: tipo });
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;
-  enlace.download = "biblioteca-facil.json";
+  enlace.download = nombre;
   enlace.click();
   URL.revokeObjectURL(url);
+}
+
+function exportarBiblioteca(formato) {
+  if (formato === "csv") {
+    const cabeceras = ["titulo", "autor", "editorial", "anio", "categoria", "isbn", "status", "favorite", "wishlist", "paginas", "collection", "genre", "language", "createdAt", "description"];
+    const filas = state.libros.map((libro) => [
+      libro.titulo,
+      libro.autor,
+      libro.editorial,
+      libro.anio,
+      libro.categoria,
+      libro.isbn,
+      libro.status,
+      libro.favorite ? "true" : "false",
+      libro.wishlist ? "true" : "false",
+      libro.paginas,
+      libro.collection,
+      libro.genre || libro.categoria,
+      libro.language,
+      libro.createdAt,
+      libro.description || libro.notas
+    ].map(escapeCsv).join(","));
+    const contenido = [cabeceras.join(","), ...filas].join("\n");
+    descargarArchivo(contenido, "biblioteca-facil.csv", "text/csv;charset=utf-8;");
+    return;
+  }
+
+  const contenido = JSON.stringify(state.libros, null, 2);
+  descargarArchivo(contenido, "biblioteca-facil.json", "application/json");
+}
+
+function parsearCsv(texto) {
+  const lineas = texto.trim().split(/\r?\n/);
+  if (lineas.length < 2) {
+    return [];
+  }
+
+  const encabezados = lineas[0].split(",").map((columna) => columna.trim());
+  return lineas.slice(1).filter(Boolean).map((linea) => {
+    const valores = linea.match(/("(?:[^"]|"")*"|[^,]+)/g) || [];
+    return encabezados.reduce((obj, encabezado, index) => {
+      obj[encabezado] = (valores[index] || "").replace(/^"|"$/g, "").replace(/""/g, '"').trim();
+      return obj;
+    }, {});
+  });
 }
 
 function importarBiblioteca(event) {
@@ -694,24 +835,49 @@ function importarBiblioteca(event) {
   const lector = new FileReader();
   lector.onload = () => {
     try {
-      const datos = JSON.parse(lector.result);
-      const librosImportados = Array.isArray(datos) ? datos : datos.books;
-      if (!Array.isArray(librosImportados)) {
+      const texto = lector.result;
+      let datosImportados = [];
+      if (archivo.name.toLowerCase().endsWith(".csv")) {
+        datosImportados = parsearCsv(texto).map((fila) => ({
+          titulo: fila.titulo || fila.title || "",
+          autor: fila.autor || fila.author || "",
+          editorial: fila.editorial || fila.publisher || "",
+          anio: fila.anio || fila.year || "",
+          categoria: fila.categoria || fila.category || "",
+          isbn: fila.isbn || "",
+          status: fila.status || "Pending",
+          favorite: fila.favorite === "true",
+          wishlist: fila.wishlist === "true",
+          paginas: fila.paginas || fila.pages || "",
+          collection: fila.collection || "",
+          genre: fila.genre || "",
+          language: fila.language || "",
+          description: fila.description || fila.notas || "",
+          createdAt: fila.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }));
+      } else {
+        const datos = JSON.parse(texto);
+        datosImportados = Array.isArray(datos) ? datos : datos.libros || datos.books || [];
+      }
+
+      if (!Array.isArray(datosImportados)) {
         throw new Error("Formato inválido");
       }
-      const confirmar = confirm("¿Deseas reemplazar tu biblioteca actual con los datos del archivo?");
+      const confirmar = confirm("¿Deseas reemplazar la biblioteca actual con los datos importados?");
       if (!confirmar) {
         inputImportar.value = "";
         return;
       }
 
-      libros = librosImportados.map((libro, index) => normalizarLibro(libro, index));
+      state.libros = datosImportados.map((libro, index) => normalizarLibro(libro, index));
       guardarLibros();
       resetFormulario();
       renderLibros();
       inputImportar.value = "";
+      mostrarEstado("Biblioteca importada correctamente.");
     } catch (error) {
-      alert("No se pudo importar el archivo JSON.");
+      alert("No se pudo importar el archivo. Asegúrate de usar JSON o CSV válido.");
       inputImportar.value = "";
     }
   };
@@ -719,21 +885,48 @@ function importarBiblioteca(event) {
 }
 
 function aplicarTema(theme) {
+  state.theme = theme;
   document.body.classList.toggle("dark", theme === "dark");
   btnTheme.textContent = theme === "dark" ? "☀️ Modo claro" : "🌙 Modo oscuro";
+  localStorage.setItem(THEME_KEY, theme);
 }
 
 function toggleTema() {
-  const theme = document.body.classList.contains("dark") ? "light" : "dark";
-  localStorage.setItem("bibliotecaFacilTheme", theme);
-  aplicarTema(theme);
+  const nuevoTema = document.body.classList.contains("dark") ? "light" : "dark";
+  aplicarTema(nuevoTema);
+}
+
+function abrirFormulario() {
+  formSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  inputTitulo.focus();
+}
+
+function limpiarBiblioteca() {
+  const confirmar = confirm("¿Seguro que quieres borrar toda la biblioteca? Esta acción no se puede deshacer.");
+  if (!confirmar) {
+    return;
+  }
+  state.libros = [];
+  guardarLibros();
+  resetFormulario();
+  renderLibros();
+  mostrarEstado("Biblioteca vaciada.");
+}
+
+function registrarServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    });
+  }
 }
 
 form.addEventListener("submit", guardarLibro);
 inputPortada.addEventListener("change", manejarSeleccionPortada);
 inputTipo.addEventListener("change", toggleCamposComic);
 btnCancelar.addEventListener("click", resetFormulario);
-btnExportar.addEventListener("click", exportarBiblioteca);
+btnExportarJson.addEventListener("click", () => exportarBiblioteca("json"));
+btnExportarCsv.addEventListener("click", () => exportarBiblioteca("csv"));
 btnImportar.addEventListener("click", () => inputImportar.click());
 inputImportar.addEventListener("change", importarBiblioteca);
 buscador.addEventListener("input", renderLibros);
@@ -747,17 +940,22 @@ btnVistaSeries.addEventListener("click", () => {
   btnVistaSeries.textContent = btnVistaSeries.classList.contains("active") ? "✓ Agrupar por series" : "Agrupar por series";
   renderLibros();
 });
-btnBuscarIsbn.addEventListener("click", () => buscarLibroPorISBN(inputIsbn.value));
+btnBuscarIsbn.addEventListener("click", () => buscarDatosLibro(inputIsbn.value));
 btnEscanear.addEventListener("click", iniciarEscaneoIsbn);
+btnEscanearPrincipal.addEventListener("click", iniciarEscaneoIsbn);
+btnAgregarManual.addEventListener("click", abrirFormulario);
 btnDetenerScanner.addEventListener("click", detenerEscaneoIsbn);
-inputIsbn.addEventListener("change", () => buscarLibroPorISBN(inputIsbn.value));
+btnLinterna.addEventListener("click", alternarLinterna);
+inputIsbn.addEventListener("change", () => buscarDatosLibro(inputIsbn.value));
+btnTheme.addEventListener("click", toggleTema);
+btnResetLibrary.addEventListener("click", limpiarBiblioteca);
 
 estrellas.addEventListener("click", (event) => {
   const boton = event.target.closest(".estrella");
   if (!boton) {
     return;
   }
-  valoracionSeleccionada = Number(boton.dataset.value);
+  state.ratingSeleccionada = Number(boton.dataset.value);
   actualizarEstrellas();
 });
 
@@ -778,9 +976,8 @@ listaLibros.addEventListener("click", (event) => {
   }
 });
 
-btnTheme.addEventListener("click", toggleTema);
-
 cargarLibros();
-aplicarTema(localStorage.getItem("bibliotecaFacilTheme") || "light");
+aplicarTema(localStorage.getItem(THEME_KEY) || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 resetFormulario();
 renderLibros();
+registrarServiceWorker();
