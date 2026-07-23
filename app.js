@@ -384,7 +384,11 @@ async function iniciarEscaneoIsbn() {
 
     if (Array.isArray(cams) && cams.length > 0) {
       const rearCamera = cams.find((cam) => /rear|back|environment|trasera/i.test(cam.label));
-      cameraConfig = rearCamera?.id || cams[0].id || cameraConfig;
+      if (rearCamera?.id) {
+        cameraConfig = rearCamera.id;
+      } else if (cams.length === 1) {
+        cameraConfig = cams[0].id;
+      }
     }
 
     const scanner = new window.Html5Qrcode("videoScanner");
