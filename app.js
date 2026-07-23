@@ -380,16 +380,18 @@ async function iniciarEscaneoIsbn() {
 
   try {
     const cams = await window.Html5Qrcode.getCameras();
-    const camara = cams.find((cam) => /back|environment|rear/i.test(cam.label)) || cams[0];
-    if (!camara) {
-      throw new Error("No hay cámaras disponibles");
+    let cameraConfig = { facingMode: "environment" };
+
+    if (Array.isArray(cams) && cams.length > 0) {
+      const rearCamera = cams.find((cam) => /rear|back|environment|trasera/i.test(cam.label));
+      cameraConfig = rearCamera?.id || cams[0].id || cameraConfig;
     }
 
     const scanner = new window.Html5Qrcode("videoScanner");
     state.scannerInstancia = scanner;
 
     await scanner.start(
-      camara.id || { facingMode: "environment" },
+      cameraConfig,
       {
         fps: 10,
         qrbox: { width: 240, height: 160 },
