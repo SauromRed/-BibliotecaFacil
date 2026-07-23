@@ -416,9 +416,21 @@ async function iniciarEscaneoIsbn() {
   btnEscanear.disabled = true;
   btnEscanearPrincipal.disabled = true;
 
+  if (typeof window.Html5Qrcode !== "function") {
+    mostrarEstado("El motor de escaneo no está disponible. Recarga la página.");
+    state.scannerActivo = false;
+    btnEscanear.disabled = false;
+    btnEscanearPrincipal.disabled = false;
+    return;
+  }
+
   try {
     const camara = await obtenerCamaraTrasera();
     const cameraConfig = camara?.id || { facingMode: "environment" };
+
+    if (camara?.label) {
+      mostrarEstado(`Usando cámara: ${camara.label}`);
+    }
 
     const scanner = new window.Html5Qrcode("videoScanner");
     state.scannerInstancia = scanner;
