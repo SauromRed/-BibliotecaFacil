@@ -10,6 +10,7 @@ const state = {
   scannerActivo: false,
   scannerInstancia: null,
   linternaActiva: false,
+  scanFailureCount: 0,
   theme: "light"
 };
 
@@ -426,7 +427,9 @@ async function iniciarEscaneoIsbn() {
 
   try {
     const camara = await obtenerCamaraTrasera();
-    const cameraConfig = camara?.id || { facingMode: "environment" };
+    const cameraConfig = camara?.id
+      ? { deviceId: { exact: camara.id } }
+      : { facingMode: { ideal: "environment" } };
 
     if (camara?.label) {
       mostrarEstado(`Usando cámara: ${camara.label}`);
@@ -439,10 +442,45 @@ async function iniciarEscaneoIsbn() {
       cameraConfig,
       {
         fps: 10,
-        qrbox: { width: 240, height: 160 },
-        formatsToSupport: [window.Html5QrcodeSupportedFormats.EAN_13, window.Html5QrcodeSupportedFormats.EAN_8]
+        qrbox: { width: 280, height: 180 },
+        formatsToSupport: [
+          window.Html5QrcodeSupportedFormats.EAN_13,
+          window.Html5QrcodeSupportedFormats.EAN_8,
+          window.Html5QrcodeSupportedFormats.CODE_128,
+          window.Html5QrcodeSupportedFormats.CODE_39
+        ],
+        videoConstraints: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: { ideal: "environment" }
+        },
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       },
       async (decodedText) => {
+        if (!state.scannerActivo) {
+          return;
+        }
+        const isbn = decodedText.replace(/[^0-9Xx]/g, "");
+        if (!isbn) {
+          state.scanFailureCount += 1;
+          if (state.scanFailureCount >= 10) {
+            mostrarEstado("Aún no se detecta un ISBN válido. Asegúrate de enfocar bien el código y usar buena iluminación.");
+            state.scanFailureCount = 0;
+          }
+          return;
+        }
+        state.scanFailureCount = 0;
+        if (navigator.vibrate) {
+          navigator.vibrate(120);
+        }
+        inputIsbn.value = isbn;
+        state.scannerActivo = false;
+        mostrarEstado("ISBN detectado. Cargando datos...");
+        await detenerEscaneoIsbn();
+        await buscarDatosLibro(isbn);
+      },
         if (!state.scannerActivo) {
           return;
         }
@@ -469,6 +507,7 @@ async function iniciarEscaneoIsbn() {
       btnLinterna.disabled = true;
     }
     btnDetenerScanner.disabled = false;
+    state.scanFailureCount = 0;
   } catch (error) {
     mostrarEstado("No se pudo iniciar la cámara. Comprueba permisos o intenta de nuevo.");
     state.scannerActivo = false;
