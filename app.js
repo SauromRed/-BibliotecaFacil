@@ -165,7 +165,23 @@ async function obtenerCamaraTrasera() {
     if (!Array.isArray(cams) || cams.length === 0) {
       return null;
     }
-    return cams.find((cam) => /rear|back|environment|trasera/i.test(cam.label)) || cams[0];
+
+    const rearRegex = /rear|back|environment|trasera|trasero|posterior/i;
+    const frontRegex = /front|user|delantera|selfie/i;
+    const rearCamera = cams.find((cam) => rearRegex.test(cam.label));
+    if (rearCamera?.id) {
+      return rearCamera;
+    }
+
+    if (cams.length > 1) {
+      const fallbackCamera = cams.find((cam) => !frontRegex.test(cam.label));
+      if (fallbackCamera?.id) {
+        return fallbackCamera;
+      }
+      return cams[1] || cams[0];
+    }
+
+    return cams[0];
   } catch (error) {
     return null;
   }
