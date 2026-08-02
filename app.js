@@ -164,7 +164,8 @@ function mostrarEstado(mensaje) {
 
 async function obtenerCamaraTrasera() {
   try {
-    const cams = await window.Html5Qrcode.getCameras();
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter((device) => device.kind === "videoinput");
     if (!Array.isArray(cams) || cams.length === 0) {
       return null;
     }
@@ -172,16 +173,13 @@ async function obtenerCamaraTrasera() {
     const rearRegex = /rear|back|environment|trasera|trasero|posterior/i;
     const frontRegex = /front|user|delantera|selfie/i;
     const rearCamera = cams.find((cam) => rearRegex.test(cam.label));
-    if (rearCamera?.id) {
+    if (rearCamera?.deviceId) {
       return rearCamera;
     }
 
-    if (cams.length > 1) {
-      const fallbackCamera = cams.find((cam) => !frontRegex.test(cam.label));
-      if (fallbackCamera?.id) {
-        return fallbackCamera;
-      }
-      return cams[1] || cams[0];
+    const fallbackCamera = cams.find((cam) => !frontRegex.test(cam.label));
+    if (fallbackCamera?.deviceId) {
+      return fallbackCamera;
     }
 
     return cams[0];
@@ -436,6 +434,118 @@ function detenerStreamScanner(instancia) {
   }
 }
 
+async function iniciarEscaneoNativo() {
+  if (!window.BarcodeDetector) {
+    throw new Error("BarcodeDetector no disponible.");
+  }
+
+  const formatosSoportados = await window.BarcodeDetector.getSupportedFormats();
+  const formatosValidos = ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "upc_e"].filter((formato) => formatosSoportados.includes(formato));
+  if (formatosValidos.length === 0) {
+    throw new Error("El detector nativo no soporta los formatos necesarios.");
+  }
+
+  const camara = await obtenerCamaraTrasera();
+  const video = prepararVideoScanner();
+  if (!video) {
+    throw new Error("No se pudo preparar la vista previa del escáner.");
+  }
+
+  const constraints = {
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
+  };
+
+  if (camara?.deviceId) {
+    constraints.video.deviceId = { exact: camara.deviceId };
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = stream;
+  await video.play();
+
+  const detector = new window.BarcodeDetector({ formats: formatosValidos });
+  let detectedCode = null;
+  let frameId = null;
+  let activo = true;
+
+  const scanFrame = async () => {
+    if (!activo) {
+      return;
+    }
+
+    try {
+      const barcodes = await detector.detect(video);
+      if (Array.isArray(barcodes) && barcodes.length > 0) {
+        const code = String(barcodes[0].rawValue || "").replace(/[^0-9Xx]/g, "");
+        if (code && detectedCode !== code) {
+          detectedCode = code;
+          if (navigator.vibrate) {
+            navigator.vibrate(120);
+          }
+          inputIsbn.value = code;
+          mostrarEstado("ISBN detectado. Cargando datos...");
+          state.scannerActivo = false;
+          await detenerEscaneoIsbn();
+          await buscarDatosLibro(code);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn("BarcodeDetector error:", error);
+    }
+
+    frameId = requestAnimationFrame(scanFrame);
+  };
+
+  frameId = requestAnimationFrame(scanFrame);
+
+  state.scannerInstancia = {
+    type: "native",
+    stream,
+    video,
+    detector,
+    animationFrameId: frameId,
+    async stop() {
+      activo = false;
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+      }
+      if (this.stream) {
+        this.stream.getTracks().forEach((track) => track.stop());
+      }
+      if (this.video) {
+        this.video.pause();
+        this.video.srcObject = null;
+      }
+    },
+    async clear() {
+      if (this.video) {
+        this.video.srcObject = null;
+      }
+    },
+    async toggleFlash() {
+      const track = this.stream?.getVideoTracks?.()[0];
+      if (!track?.applyConstraints) {
+        throw new Error("No compatible");
+      }
+      const capabilities = track.getCapabilities?.() || {};
+      if (!capabilities.torch) {
+        throw new Error("No compatible");
+      }
+      await track.applyConstraints({ advanced: [{ torch: !state.linternaActiva }] });
+    }
+  };
+
+  btnLinterna.disabled = true;
+  btnDetenerScanner.disabled = false;
+  state.scanFailureCount = 0;
+}
+
 async function cargarQuagga() {
   if (window.Quagga) {
     return window.Quagga;
@@ -474,8 +584,8 @@ async function iniciarEscaneoQuagga() {
     }
   };
 
-  if (camara?.id) {
-    constraints.video.deviceId = { exact: camara.id };
+  if (camara?.deviceId) {
+    constraints.video.deviceId = { exact: camara.deviceId };
   }
 
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -589,8 +699,8 @@ async function iniciarEscaneoLegacy() {
   }
 
   const camara = await obtenerCamaraTrasera();
-  const cameraConfig = camara?.id
-    ? { deviceId: { exact: camara.id } }
+  const cameraConfig = camara?.deviceId
+    ? { deviceId: { exact: camara.deviceId } }
     : { facingMode: { ideal: "environment" } };
 
   if (camara?.label) {
@@ -677,7 +787,16 @@ async function iniciarEscaneoIsbn() {
 
   try {
     if (window.Quagga) {
-      await iniciarEscaneoQuagga();
+      try {
+        await iniciarEscaneoQuagga();
+      } catch (error) {
+        console.warn("Error Quagga, probando alternativa:", error);
+        if ("BarcodeDetector" in window) {
+          await iniciarEscaneoNativo();
+        } else {
+          await iniciarEscaneoLegacy();
+        }
+      }
     } else if ("BarcodeDetector" in window) {
       await iniciarEscaneoNativo();
     } else {
