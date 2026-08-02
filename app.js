@@ -444,11 +444,11 @@ async function iniciarEscaneoIsbn() {
         fps: 10,
         qrbox: { width: 280, height: 180 },
         formatsToSupport: [
-          window.Html5QrcodeSupportedFormats.EAN_13,
-          window.Html5QrcodeSupportedFormats.EAN_8,
-          window.Html5QrcodeSupportedFormats.CODE_128,
-          window.Html5QrcodeSupportedFormats.CODE_39
-        ],
+          window.Html5QrcodeSupportedFormats?.EAN_13,
+          window.Html5QrcodeSupportedFormats?.EAN_8,
+          window.Html5QrcodeSupportedFormats?.CODE_128,
+          window.Html5QrcodeSupportedFormats?.CODE_39
+        ].filter(Boolean),
         videoConstraints: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
@@ -462,7 +462,8 @@ async function iniciarEscaneoIsbn() {
         if (!state.scannerActivo) {
           return;
         }
-        const isbn = decodedText.replace(/[^0-9Xx]/g, "");
+
+        const isbn = String(decodedText || "").replace(/[^0-9Xx]/g, "");
         if (!isbn) {
           state.scanFailureCount += 1;
           if (state.scanFailureCount >= 10) {
@@ -471,26 +472,12 @@ async function iniciarEscaneoIsbn() {
           }
           return;
         }
+
         state.scanFailureCount = 0;
         if (navigator.vibrate) {
           navigator.vibrate(120);
         }
-        inputIsbn.value = isbn;
-        state.scannerActivo = false;
-        mostrarEstado("ISBN detectado. Cargando datos...");
-        await detenerEscaneoIsbn();
-        await buscarDatosLibro(isbn);
-      },
-        if (!state.scannerActivo) {
-          return;
-        }
-        const isbn = decodedText.replace(/[^0-9Xx]/g, "");
-        if (!isbn) {
-          return;
-        }
-        if (navigator.vibrate) {
-          navigator.vibrate(120);
-        }
+
         inputIsbn.value = isbn;
         state.scannerActivo = false;
         mostrarEstado("ISBN detectado. Cargando datos...");
