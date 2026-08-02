@@ -14,6 +14,8 @@ const state = {
   theme: "light"
 };
 
+let quaggaScriptPromise = null;
+
 const form = document.getElementById("formLibro");
 const formSection = document.getElementById("formSection");
 const inputIsbn = document.getElementById("isbn");
@@ -401,6 +403,262 @@ function llenarFormularioConDatos(datos) {
   }
 }
 
+function prepararVideoScanner() {
+  const contenedor = document.getElementById("videoScanner");
+  if (!contenedor) {
+    return null;
+  }
+
+  contenedor.innerHTML = "";
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.style.width = "100%";
+  video.style.height = "100%";
+  video.style.objectFit = "cover";
+  contenedor.appendChild(video);
+  return video;
+}
+
+function detenerStreamScanner(instancia) {
+  if (instancia?.stream) {
+    instancia.stream.getTracks().forEach((track) => track.stop());
+  }
+
+  if (instancia?.video) {
+    instancia.video.pause();
+    instancia.video.srcObject = null;
+  }
+
+  if (instancia?.animationFrameId) {
+    cancelAnimationFrame(instancia.animationFrameId);
+  }
+}
+
+async function cargarQuagga() {
+  if (window.Quagga) {
+    return window.Quagga;
+  }
+
+  if (!quaggaScriptPromise) {
+    quaggaScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/quagga/dist/quagga.min.js";
+      script.onload = () => resolve(window.Quagga);
+      script.onerror = () => reject(new Error("No se pudo cargar Quagga"));
+      document.head.appendChild(script);
+    });
+  }
+
+  return quaggaScriptPromise;
+}
+
+async function iniciarEscaneoQuagga() {
+  const Quagga = await cargarQuagga();
+  if (!Quagga) {
+    throw new Error("Quagga no disponible");
+  }
+
+  const contenedor = document.getElementById("videoScanner");
+  if (!contenedor) {
+    throw new Error("Contenedor del escáner no encontrado");
+  }
+
+  const camara = await obtenerCamaraTrasera();
+  const constraints = {
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  };
+
+  if (camara?.id) {
+    constraints.video.deviceId = { exact: camara.id };
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  const video = prepararVideoScanner();
+  if (!video) {
+    throw new Error("No se pudo preparar la vista previa");
+  }
+
+  video.srcObject = stream;
+  await video.play();
+
+  let detectedCode = null;
+  const onDetected = (result) => {
+    const code = String(result?.codeResult?.code || "").replace(/[^0-9Xx]/g, "");
+    if (!code || detectedCode === code) {
+      return;
+    }
+
+    detectedCode = code;
+    if (navigator.vibrate) {
+      navigator.vibrate(120);
+    }
+
+    inputIsbn.value = code;
+    state.scannerActivo = false;
+    mostrarEstado("ISBN detectado. Cargando datos...");
+    Quagga.offDetected(onDetected);
+    detenerEscaneoIsbn();
+    buscarDatosLibro(code);
+  };
+
+  await new Promise((resolve, reject) => {
+    Quagga.init(
+      {
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: contenedor,
+          constraints: {
+            facingMode: "environment",
+            width: { min: 640 },
+            height: { min: 480 }
+          }
+        },
+        locate: true,
+        decoder: {
+          readers: ["ean_reader", "ean_8_reader", "code_128_reader", "code_39_reader"]
+        }
+      },
+      (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        try {
+          Quagga.start();
+          Quagga.onDetected(onDetected);
+          resolve();
+        } catch (startError) {
+          reject(startError);
+        }
+      }
+    );
+  });
+
+  state.scannerInstancia = {
+    type: "quagga",
+    stream,
+    video,
+    target: contenedor,
+    onDetected,
+    async stop() {
+      Quagga.offDetected(this.onDetected);
+      Quagga.stop();
+      detenerStreamScanner(this);
+    },
+    async clear() {
+      if (this.target) {
+        this.target.innerHTML = "";
+      }
+      if (this.video) {
+        this.video.srcObject = null;
+      }
+    },
+    async toggleFlash() {
+      const track = this.stream?.getVideoTracks?.()[0];
+      if (!track?.applyConstraints) {
+        throw new Error("No compatible");
+      }
+      const capabilities = track.getCapabilities?.() || {};
+      if (!capabilities.torch) {
+        throw new Error("No compatible");
+      }
+      await track.applyConstraints({ advanced: [{ torch: !state.linternaActiva }] });
+    }
+  };
+
+  btnLinterna.disabled = false;
+  btnLinterna.textContent = "Encender linterna";
+  btnDetenerScanner.disabled = false;
+  state.scanFailureCount = 0;
+}
+
+async function iniciarEscaneoLegacy() {
+  if (typeof window.Html5Qrcode !== "function") {
+    mostrarEstado("El motor de escaneo no está disponible. Recarga la página.");
+    state.scannerActivo = false;
+    btnEscanear.disabled = false;
+    btnEscanearPrincipal.disabled = false;
+    return;
+  }
+
+  const camara = await obtenerCamaraTrasera();
+  const cameraConfig = camara?.id
+    ? { deviceId: { exact: camara.id } }
+    : { facingMode: { ideal: "environment" } };
+
+  if (camara?.label) {
+    mostrarEstado(`Usando cámara: ${camara.label}`);
+  }
+
+  const scanner = new window.Html5Qrcode("videoScanner");
+  state.scannerInstancia = scanner;
+
+  await scanner.start(
+    cameraConfig,
+    {
+      fps: 10,
+      qrbox: { width: 280, height: 180 },
+      formatsToSupport: [
+        window.Html5QrcodeSupportedFormats?.EAN_13,
+        window.Html5QrcodeSupportedFormats?.EAN_8,
+        window.Html5QrcodeSupportedFormats?.CODE_128,
+        window.Html5QrcodeSupportedFormats?.CODE_39
+      ].filter(Boolean),
+      videoConstraints: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: { ideal: "environment" }
+      },
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      }
+    },
+    async (decodedText) => {
+      if (!state.scannerActivo) {
+        return;
+      }
+
+      const isbn = String(decodedText || "").replace(/[^0-9Xx]/g, "");
+      if (!isbn) {
+        state.scanFailureCount += 1;
+        if (state.scanFailureCount >= 10) {
+          mostrarEstado("Aún no se detecta un ISBN válido. Asegúrate de enfocar bien el código y usar buena iluminación.");
+          state.scanFailureCount = 0;
+        }
+        return;
+      }
+
+      state.scanFailureCount = 0;
+      if (navigator.vibrate) {
+        navigator.vibrate(120);
+      }
+
+      inputIsbn.value = isbn;
+      state.scannerActivo = false;
+      mostrarEstado("ISBN detectado. Cargando datos...");
+      await detenerEscaneoIsbn();
+      await buscarDatosLibro(isbn);
+    },
+    () => {}
+  );
+
+  if (typeof scanner.toggleFlash === "function") {
+    btnLinterna.disabled = false;
+    btnLinterna.textContent = "Encender linterna";
+  } else {
+    btnLinterna.disabled = true;
+  }
+  btnDetenerScanner.disabled = false;
+  state.scanFailureCount = 0;
+}
+
 async function iniciarEscaneoIsbn() {
   if (!navigator.mediaDevices?.getUserMedia) {
     mostrarEstado("La cámara no está disponible en este navegador.");
@@ -417,85 +675,16 @@ async function iniciarEscaneoIsbn() {
   btnEscanear.disabled = true;
   btnEscanearPrincipal.disabled = true;
 
-  if (typeof window.Html5Qrcode !== "function") {
-    mostrarEstado("El motor de escaneo no está disponible. Recarga la página.");
-    state.scannerActivo = false;
-    btnEscanear.disabled = false;
-    btnEscanearPrincipal.disabled = false;
-    return;
-  }
-
   try {
-    const camara = await obtenerCamaraTrasera();
-    const cameraConfig = camara?.id
-      ? { deviceId: { exact: camara.id } }
-      : { facingMode: { ideal: "environment" } };
-
-    if (camara?.label) {
-      mostrarEstado(`Usando cámara: ${camara.label}`);
-    }
-
-    const scanner = new window.Html5Qrcode("videoScanner");
-    state.scannerInstancia = scanner;
-
-    await scanner.start(
-      cameraConfig,
-      {
-        fps: 10,
-        qrbox: { width: 280, height: 180 },
-        formatsToSupport: [
-          window.Html5QrcodeSupportedFormats?.EAN_13,
-          window.Html5QrcodeSupportedFormats?.EAN_8,
-          window.Html5QrcodeSupportedFormats?.CODE_128,
-          window.Html5QrcodeSupportedFormats?.CODE_39
-        ].filter(Boolean),
-        videoConstraints: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: { ideal: "environment" }
-        },
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        }
-      },
-      async (decodedText) => {
-        if (!state.scannerActivo) {
-          return;
-        }
-
-        const isbn = String(decodedText || "").replace(/[^0-9Xx]/g, "");
-        if (!isbn) {
-          state.scanFailureCount += 1;
-          if (state.scanFailureCount >= 10) {
-            mostrarEstado("Aún no se detecta un ISBN válido. Asegúrate de enfocar bien el código y usar buena iluminación.");
-            state.scanFailureCount = 0;
-          }
-          return;
-        }
-
-        state.scanFailureCount = 0;
-        if (navigator.vibrate) {
-          navigator.vibrate(120);
-        }
-
-        inputIsbn.value = isbn;
-        state.scannerActivo = false;
-        mostrarEstado("ISBN detectado. Cargando datos...");
-        await detenerEscaneoIsbn();
-        await buscarDatosLibro(isbn);
-      },
-      () => {}
-    );
-
-    if (typeof scanner.toggleFlash === "function") {
-      btnLinterna.disabled = false;
-      btnLinterna.textContent = "Encender linterna";
+    if (window.Quagga) {
+      await iniciarEscaneoQuagga();
+    } else if ("BarcodeDetector" in window) {
+      await iniciarEscaneoNativo();
     } else {
-      btnLinterna.disabled = true;
+      await iniciarEscaneoLegacy();
     }
-    btnDetenerScanner.disabled = false;
-    state.scanFailureCount = 0;
   } catch (error) {
+    console.error(error);
     mostrarEstado("No se pudo iniciar la cámara. Comprueba permisos o intenta de nuevo.");
     state.scannerActivo = false;
     btnLinterna.disabled = true;
@@ -527,12 +716,30 @@ async function detenerEscaneoIsbn() {
 }
 
 async function alternarLinterna() {
-  if (!state.scannerInstancia || typeof state.scannerInstancia.toggleFlash !== "function") {
+  if (!state.scannerInstancia) {
     mostrarEstado("La linterna no está disponible en este dispositivo.");
     return;
   }
+
   try {
-    await state.scannerInstancia.toggleFlash();
+    if (typeof state.scannerInstancia.toggleFlash === "function") {
+      await state.scannerInstancia.toggleFlash();
+      state.linternaActiva = !state.linternaActiva;
+      btnLinterna.textContent = state.linternaActiva ? "Apagar linterna" : "Encender linterna";
+      return;
+    }
+
+    const track = state.scannerInstancia.stream?.getVideoTracks?.()[0];
+    if (!track?.applyConstraints) {
+      throw new Error("No compatible");
+    }
+
+    const capabilities = track.getCapabilities?.() || {};
+    if (!capabilities.torch) {
+      throw new Error("No compatible");
+    }
+
+    await track.applyConstraints({ advanced: [{ torch: !state.linternaActiva }] });
     state.linternaActiva = !state.linternaActiva;
     btnLinterna.textContent = state.linternaActiva ? "Apagar linterna" : "Encender linterna";
   } catch (error) {
