@@ -522,8 +522,10 @@ function prepararVideoScanner() {
   video.style.width = "100%";
   video.style.height = "100%";
   video.style.maxHeight = "100%";
-  video.style.objectFit = "contain";
+  video.style.objectFit = "cover";
   video.style.background = "#000";
+  video.style.transform = "rotate(90deg)";
+  video.style.transformOrigin = "center";
   contenedor.appendChild(video);
   return video;
 }
@@ -896,6 +898,21 @@ async function iniciarEscaneoIsbn() {
   btnEscanearPrincipal.disabled = true;
 
   try {
+    btnLinterna.disabled = true;
+    btnDetenerScanner.disabled = false;
+
+    if (window.Html5Qrcode) {
+      try {
+        await iniciarEscaneoLegacy();
+        btnLinterna.disabled = false;
+        btnLinterna.textContent = "Encender linterna";
+        mostrarEstado("Cámara lista. Si el escáner automático no detecta, puedes escribir el ISBN manualmente.");
+        return;
+      } catch (error) {
+        console.warn("Escáner legacy no disponible:", error);
+      }
+    }
+
     const video = prepararVideoScanner();
     if (!video) {
       throw new Error("No se pudo preparar la vista previa del escáner.");
@@ -936,7 +953,6 @@ async function iniciarEscaneoIsbn() {
 
     btnLinterna.disabled = false;
     btnLinterna.textContent = "Encender linterna";
-    btnDetenerScanner.disabled = false;
 
     if (window.BarcodeDetector) {
       try {
