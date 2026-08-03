@@ -545,7 +545,7 @@ function detenerStreamScanner(instancia) {
   }
 }
 
-async function prepararStreamCamara(preferRear = true, videoInicial = null) {
+async function prepararStreamCamara(preferRear = true, videoInicial = null, solicitarLinterna = false) {
   const video = videoInicial || prepararVideoScanner();
   if (!video) {
     throw new Error("No se pudo preparar la vista previa del escáner.");
@@ -556,7 +556,8 @@ async function prepararStreamCamara(preferRear = true, videoInicial = null) {
       video: {
         facingMode: { ideal: preferRear ? "environment" : "user" },
         width: { ideal: 1280 },
-        height: { ideal: 720 }
+        height: { ideal: 720 },
+        ...(solicitarLinterna ? { torch: true } : {})
       },
       audio: false
     },
@@ -564,7 +565,8 @@ async function prepararStreamCamara(preferRear = true, videoInicial = null) {
       video: {
         facingMode: { ideal: preferRear ? "user" : "environment" },
         width: { ideal: 1280 },
-        height: { ideal: 720 }
+        height: { ideal: 720 },
+        ...(solicitarLinterna ? { torch: true } : {})
       },
       audio: false
     },
@@ -578,9 +580,10 @@ async function prepararStreamCamara(preferRear = true, videoInicial = null) {
   for (const constraints of intentos) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const track = stream.getVideoTracks?.()[0] || null;
       video.srcObject = stream;
       await video.play().catch(() => {});
-      return { stream, video };
+      return { stream, video, track };
     } catch (error) {
       ultimoError = error;
     }
@@ -918,11 +921,12 @@ async function iniciarEscaneoIsbn() {
       throw new Error("No se pudo preparar la vista previa del escáner.");
     }
 
-    const { stream } = await prepararStreamCamara(true, video);
+    const { stream, track } = await prepararStreamCamara(true, video, true);
 
     state.scannerInstancia = {
       type: "preview",
       stream,
+      track,
       video,
       async stop() {
         if (this.stream) {
@@ -1013,7 +1017,7 @@ async function alternarLinterna() {
       return;
     }
 
-    const track = state.scannerInstancia.stream?.getVideoTracks?.()[0];
+    const track = state.scannerInstancia.track || state.scannerInstancia.stream?.getVideoTracks?.()[0];
     if (!track?.applyConstraints) {
       throw new Error("No compatible");
     }
