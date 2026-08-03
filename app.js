@@ -92,6 +92,67 @@ function escapeCsv(value) {
   return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
+function normalizarIsbn(valor) {
+  return String(valor ?? "")
+    .trim()
+    .replace(/^isbn\s*/i, "")
+    .replace(/[^0-9Xx]/g, "")
+    .toUpperCase();
+}
+
+function convertirIsbn13a10(isbn13) {
+  if (!isbn13 || isbn13.length !== 13) {
+    return null;
+  }
+
+  const core = isbn13.slice(3, 12);
+  let suma = 0;
+  for (let index = 0; index < core.length; index += 1) {
+    suma += Number(core[index]) * (10 - index);
+  }
+
+  const check = (11 - (suma % 11)) % 11;
+  const checkDigit = check === 10 ? "X" : String(check);
+  return `${core}${checkDigit}`;
+}
+
+function convertirIsbn10a13(isbn10) {
+  if (!isbn10 || isbn10.length !== 10) {
+    return null;
+  }
+
+  const core = isbn10.slice(0, 9);
+  let suma = 0;
+  for (let index = 0; index < core.length; index += 1) {
+    suma += Number(core[index]) * (index + 1);
+  }
+
+  const check = (10 - (suma % 10)) % 10;
+  return `978${core}${check}`;
+}
+
+function generarVariantesIsbn(valor) {
+  const limpio = normalizarIsbn(valor);
+  if (!limpio) {
+    return [];
+  }
+
+  const variantes = [limpio];
+  if (limpio.length === 13) {
+    const isbn10 = convertirIsbn13a10(limpio);
+    if (isbn10) {
+      variantes.push(isbn10);
+    }
+  } else if (limpio.length === 10) {
+    const isbn13 = convertirIsbn10a13(limpio);
+    if (isbn13) {
+      variantes.push(isbn13);
+    }
+  }
+
+  return [...new Set(variantes.filter(Boolean))];
+}
+
 function normalizarLibro(libro, index = 0) {
   const tipo = String(libro?.type || "").toLowerCase() === "comic" ? "comic" : "book";
   return {
@@ -300,73 +361,116 @@ function manejarSeleccionPortada(event) {
 }
 
 async function buscarDatosLibro(isbn) {
-  const valor = isbn.trim();
+  const valor = normalizarIsbn(isbn);
   if (!valor) {
     return;
   }
 
+  const variantes = generarVariantesIsbn(valor);
   mostrarEstado("Buscando datos del ISBN...");
 
   const servicios = [
     async () => {
-      const respuesta = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(valor)}`);
-      if (!respuesta.ok) {
-        throw new Error("Google Books no responde");
+      for (const variante of variantes) {
+        const respuesta = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(variante)}`);
+        if (!respuesta.ok) {
+          continue;
+        }
+        const data = await respuesta.json();
+        const item = data.items?.find((entry) => {
+          const ids = entry?.volumeInfo?.industryIdentifiers || [];
+          return ids.some((identifier) => normalizarIsbn(identifier.identifier) === variante);
+        }) || data.items?.[0];
+
+        if (!item) {
+          continue;
+        }
+
+        const volumen = item.volumeInfo || {};
+        return {
+          titulo: volumen.title || "",
+          autor: (volumen.authors || []).join(", "),
+          editorial: volumen.publisher || "",
+          anio: volumen.publishedDate ? String(volumen.publishedDate).slice(0, 4) : "",
+          categoria: (volumen.categories || [])[0] || "",
+          cover: volumen.imageLinks?.extraLarge || volumen.imageLinks?.large || volumen.imageLinks?.medium || volumen.imageLinks?.thumbnail || "",
+          paginas: volumen.pageCount || "",
+          language: volumen.language || "",
+          description: volumen.description || "",
+          genre: (volumen.categories || [])[0] || ""
+        };
       }
-      const data = await respuesta.json();
-      const item = data.items?.[0];
-      if (!item) {
-        throw new Error("Google Books sin resultados");
-      }
-      const volumen = item.volumeInfo || {};
-      return {
-        titulo: volumen.title || "",
-        autor: (volumen.authors || []).join(", "),
-        editorial: volumen.publisher || "",
-        anio: volumen.publishedDate ? String(volumen.publishedDate).slice(0, 4) : "",
-        categoria: (volumen.categories || [])[0] || "",
-        cover: volumen.imageLinks?.extraLarge || volumen.imageLinks?.large || volumen.imageLinks?.medium || volumen.imageLinks?.thumbnail || "",
-        paginas: volumen.pageCount || "",
-        language: volumen.language || "",
-        description: volumen.description || "",
-        genre: (volumen.categories || [])[0] || ""
-      };
+      throw new Error("Google Books sin resultados");
     },
     async () => {
-      const respuesta = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(valor)}.json`);
-      if (!respuesta.ok) {
-        throw new Error("Open Library no responde");
+      for (const variante of variantes) {
+        const respuesta = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(`isbn:${variante}`)}&limit=5`);
+        if (!respuesta.ok) {
+          continue;
+        }
+        const data = await respuesta.json();
+        const doc = data.docs?.find((entry) => {
+          const identifiers = [entry.isbn?.[0], entry.isbn_13?.[0], entry.isbn_10?.[0]].filter(Boolean);
+          return identifiers.some((identifier) => normalizarIsbn(identifier) === variante);
+        }) || data.docs?.[0];
+
+        if (!doc) {
+          continue;
+        }
+
+        return {
+          titulo: doc.title || "",
+          autor: (doc.author_name || []).join(", "),
+          editorial: doc.publisher?.[0] || "",
+          anio: doc.first_publish_year ? String(doc.first_publish_year) : "",
+          cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : "",
+          paginas: doc.number_of_pages_median || "",
+          description: doc.subtitle || ""
+        };
       }
-      const libro = await respuesta.json();
-      return {
-        titulo: libro.title || "",
-        autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
-        editorial: libro.publishers?.[0]?.name || "",
-        anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
-        cover: libro.covers?.[0] ? `https://covers.openlibrary.org/b/id/${libro.covers[0]}-L.jpg` : "",
-        paginas: libro.number_of_pages || "",
-        description: libro.excerpts?.[0]?.excerpt || ""
-      };
+      throw new Error("Open Library sin resultados");
     },
     async () => {
-      const respuesta = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(valor)}&jscmd=data&format=json`);
-      if (!respuesta.ok) {
-        throw new Error("Open Library fallback no responde");
+      for (const variante of variantes) {
+        const respuesta = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(variante)}.json`);
+        if (!respuesta.ok) {
+          continue;
+        }
+        const libro = await respuesta.json();
+        return {
+          titulo: libro.title || "",
+          autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
+          editorial: libro.publishers?.[0]?.name || "",
+          anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
+          cover: libro.covers?.[0] ? `https://covers.openlibrary.org/b/id/${libro.covers[0]}-L.jpg` : "",
+          paginas: libro.number_of_pages || "",
+          description: libro.excerpts?.[0]?.excerpt || ""
+        };
       }
-      const data = await respuesta.json();
-      const libro = data[`ISBN:${valor}`];
-      if (!libro) {
-        throw new Error("ISBN no encontrado");
+      throw new Error("Open Library no responde");
+    },
+    async () => {
+      for (const variante of variantes) {
+        const respuesta = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(variante)}&jscmd=data&format=json`);
+        if (!respuesta.ok) {
+          continue;
+        }
+        const data = await respuesta.json();
+        const libro = data[`ISBN:${variante}`];
+        if (!libro) {
+          continue;
+        }
+        return {
+          titulo: libro.title || "",
+          autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
+          editorial: (libro.publishers || []).map((editorial) => editorial.name || editorial).join(", "),
+          anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
+          cover: libro.cover?.large || libro.cover?.medium || libro.cover?.small || "",
+          paginas: libro.number_of_pages || "",
+          description: libro.subtitle || ""
+        };
       }
-      return {
-        titulo: libro.title || "",
-        autor: (libro.authors || []).map((autor) => autor.name || autor).join(", "),
-        editorial: (libro.publishers || []).map((editorial) => editorial.name || editorial).join(", "),
-        anio: libro.publish_date ? String(libro.publish_date).slice(0, 4) : "",
-        cover: libro.cover?.large || libro.cover?.medium || libro.cover?.small || "",
-        paginas: libro.number_of_pages || "",
-        description: libro.subtitle || ""
-      };
+      throw new Error("ISBN no encontrado");
     }
   ];
 
@@ -410,11 +514,15 @@ function prepararVideoScanner() {
   contenedor.innerHTML = "";
   const video = document.createElement("video");
   video.autoplay = true;
-  video.playsInline = true;
   video.muted = true;
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("webkit-playsinline", "true");
+  video.setAttribute("x-webkit-airplay", "deny");
   video.style.width = "100%";
   video.style.height = "100%";
-  video.style.objectFit = "cover";
+  video.style.maxHeight = "100%";
+  video.style.objectFit = "contain";
+  video.style.background = "#000";
   contenedor.appendChild(video);
   return video;
 }
