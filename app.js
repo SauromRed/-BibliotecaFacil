@@ -542,8 +542,8 @@ function detenerStreamScanner(instancia) {
   }
 }
 
-async function prepararStreamCamara(preferRear = true) {
-  const video = prepararVideoScanner();
+async function prepararStreamCamara(preferRear = true, videoInicial = null) {
+  const video = videoInicial || prepararVideoScanner();
   if (!video) {
     throw new Error("No se pudo preparar la vista previa del escáner.");
   }
@@ -576,7 +576,7 @@ async function prepararStreamCamara(preferRear = true) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
-      await video.play();
+      await video.play().catch(() => {});
       return { stream, video };
     } catch (error) {
       ultimoError = error;
@@ -586,7 +586,7 @@ async function prepararStreamCamara(preferRear = true) {
   throw ultimoError || new Error("No se pudo acceder a la cámara.");
 }
 
-async function iniciarEscaneoNativo() {
+async function iniciarEscaneoNativo(streamInicial = null, videoInicial = null) {
   if (!window.BarcodeDetector) {
     throw new Error("BarcodeDetector no disponible.");
   }
@@ -597,7 +597,9 @@ async function iniciarEscaneoNativo() {
     throw new Error("El detector nativo no soporta los formatos necesarios.");
   }
 
-  const { stream, video } = await prepararStreamCamara(true);
+  const { stream, video } = streamInicial && videoInicial
+    ? { stream: streamInicial, video: videoInicial }
+    : await prepararStreamCamara(true);
 
   const detector = new window.BarcodeDetector({ formats: formatosValidos });
   let detectedCode = null;
@@ -695,7 +697,7 @@ async function cargarQuagga() {
   return quaggaScriptPromise;
 }
 
-async function iniciarEscaneoQuagga() {
+async function iniciarEscaneoQuagga(streamInicial = null, videoInicial = null) {
   const Quagga = await cargarQuagga();
   if (!Quagga) {
     throw new Error("Quagga no disponible");
@@ -706,7 +708,9 @@ async function iniciarEscaneoQuagga() {
     throw new Error("Contenedor del escáner no encontrado");
   }
 
-  const { stream, video } = await prepararStreamCamara(true);
+  const { stream, video } = streamInicial && videoInicial
+    ? { stream: streamInicial, video: videoInicial }
+    : await prepararStreamCamara(true);
 
   let detectedCode = null;
   const onDetected = (result) => {
@@ -800,7 +804,7 @@ async function iniciarEscaneoQuagga() {
   state.scanFailureCount = 0;
 }
 
-async function iniciarEscaneoLegacy() {
+async function iniciarEscaneoLegacy(streamInicial = null, videoInicial = null) {
   if (typeof window.Html5Qrcode !== "function") {
     mostrarEstado("El motor de escaneo no está disponible. Recarga la página.");
     state.scannerActivo = false;
@@ -885,36 +889,70 @@ async function iniciarEscaneoIsbn() {
   }
 
   scannerContainer.classList.remove("hidden");
-  mostrarEstado("Apunta la cámara al código ISBN...");
+  mostrarEstado("Abriendo cámara...");
   state.scannerActivo = true;
   btnEscanear.disabled = true;
   btnEscanearPrincipal.disabled = true;
 
   try {
-    if (window.Quagga) {
-      try {
-        await iniciarEscaneoQuagga();
-      } catch (error) {
-        console.warn("Error Quagga, probando alternativa:", error);
-        if ("BarcodeDetector" in window) {
-          await iniciarEscaneoNativo();
-        } else {
-          await iniciarEscaneoLegacy();
-        }
-      }
-    } else if ("BarcodeDetector" in window) {
-      await iniciarEscaneoNativo();
-    } else {
-      await iniciarEscaneoLegacy();
+    const video = prepararVideoScanner();
+    if (!video) {
+      throw new Error("No se pudo preparar la vista previa del escáner.");
     }
-  } catch (error) {
-    console.error(error);
-    mostrarEstado("La cámara se abrió pero el escáner automático no está disponible aquí. Puedes escribir el ISBN manualmente.");
-    state.scannerActivo = true;
+
+    const { stream } = await prepararStreamCamara(true, video);
+
+    state.scannerInstancia = {
+      type: "preview",
+      stream,
+      video,
+      async stop() {
+        if (this.stream) {
+          this.stream.getTracks().forEach((track) => track.stop());
+        }
+        if (this.video) {
+          this.video.pause();
+          this.video.srcObject = null;
+        }
+      },
+      async clear() {
+        if (this.video) {
+          this.video.srcObject = null;
+        }
+      },
+      async toggleFlash() {
+        const track = this.stream?.getVideoTracks?.()[0];
+        if (!track?.applyConstraints) {
+          throw new Error("No compatible");
+        }
+        const capabilities = track.getCapabilities?.() || {};
+        if (!capabilities.torch) {
+          throw new Error("No compatible");
+        }
+        await track.applyConstraints({ advanced: [{ torch: !state.linternaActiva }] });
+      }
+    };
+
     btnLinterna.disabled = true;
     btnDetenerScanner.disabled = false;
-    btnEscanear.disabled = true;
-    btnEscanearPrincipal.disabled = true;
+
+    if (window.BarcodeDetector) {
+      try {
+        await iniciarEscaneoNativo(stream, video);
+      } catch (error) {
+        console.warn("Escáner nativo no disponible:", error);
+      }
+    }
+
+    mostrarEstado("Cámara lista. Si el escáner automático no detecta, puedes escribir el ISBN manualmente.");
+  } catch (error) {
+    console.error(error);
+    mostrarEstado("No se pudo abrir la cámara. Comprueba los permisos de cámara en Safari o Chrome e intenta de nuevo.");
+    state.scannerActivo = false;
+    btnLinterna.disabled = true;
+    btnDetenerScanner.disabled = true;
+    btnEscanear.disabled = false;
+    btnEscanearPrincipal.disabled = false;
   }
 }
 
