@@ -65,6 +65,7 @@ const btnEscanearPrincipal = document.getElementById("btnEscanearPrincipal");
 const btnAgregarManual = document.getElementById("btnAgregarManual");
 const btnDetenerScanner = document.getElementById("btnDetenerScanner");
 const btnLinterna = document.getElementById("btnLinterna");
+const btnModoSimple = document.getElementById("btnModoSimple");
 const scannerContainer = document.getElementById("scannerContainer");
 const estadoBusqueda = document.getElementById("estadoBusqueda");
 const inputImportar = document.getElementById("inputImportar");
@@ -956,6 +957,10 @@ async function iniciarEscaneoIsbn() {
   }
 }
 
+async function abrirModoSimple() {
+  await iniciarEscaneoIsbn();
+}
+
 async function detenerEscaneoIsbn() {
   state.scannerActivo = false;
   scannerContainer.classList.add("hidden");
@@ -1498,6 +1503,7 @@ btnEscanearPrincipal.addEventListener("click", iniciarEscaneoIsbn);
 btnAgregarManual.addEventListener("click", abrirFormulario);
 btnDetenerScanner.addEventListener("click", detenerEscaneoIsbn);
 btnLinterna.addEventListener("click", alternarLinterna);
+btnModoSimple.addEventListener("click", abrirModoSimple);
 inputIsbn.addEventListener("change", () => buscarDatosLibro(inputIsbn.value));
 btnTheme.addEventListener("click", toggleTema);
 btnResetLibrary.addEventListener("click", limpiarBiblioteca);
