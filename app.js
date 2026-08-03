@@ -934,7 +934,8 @@ async function iniciarEscaneoIsbn() {
       }
     };
 
-    btnLinterna.disabled = true;
+    btnLinterna.disabled = false;
+    btnLinterna.textContent = "Encender linterna";
     btnDetenerScanner.disabled = false;
 
     if (window.BarcodeDetector) {
