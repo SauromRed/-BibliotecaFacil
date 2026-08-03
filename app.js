@@ -542,6 +542,50 @@ function detenerStreamScanner(instancia) {
   }
 }
 
+async function prepararStreamCamara(preferRear = true) {
+  const video = prepararVideoScanner();
+  if (!video) {
+    throw new Error("No se pudo preparar la vista previa del escáner.");
+  }
+
+  const intentos = [
+    {
+      video: {
+        facingMode: { ideal: preferRear ? "environment" : "user" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    },
+    {
+      video: {
+        facingMode: { ideal: preferRear ? "user" : "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    },
+    {
+      video: true,
+      audio: false
+    }
+  ];
+
+  let ultimoError = null;
+  for (const constraints of intentos) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      return { stream, video };
+    } catch (error) {
+      ultimoError = error;
+    }
+  }
+
+  throw ultimoError || new Error("No se pudo acceder a la cámara.");
+}
+
 async function iniciarEscaneoNativo() {
   if (!window.BarcodeDetector) {
     throw new Error("BarcodeDetector no disponible.");
@@ -553,28 +597,7 @@ async function iniciarEscaneoNativo() {
     throw new Error("El detector nativo no soporta los formatos necesarios.");
   }
 
-  const camara = await obtenerCamaraTrasera();
-  const video = prepararVideoScanner();
-  if (!video) {
-    throw new Error("No se pudo preparar la vista previa del escáner.");
-  }
-
-  const constraints = {
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
-  };
-
-  if (camara?.deviceId) {
-    constraints.video.deviceId = { exact: camara.deviceId };
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  video.srcObject = stream;
-  await video.play();
+  const { stream, video } = await prepararStreamCamara(true);
 
   const detector = new window.BarcodeDetector({ formats: formatosValidos });
   let detectedCode = null;
@@ -683,27 +706,7 @@ async function iniciarEscaneoQuagga() {
     throw new Error("Contenedor del escáner no encontrado");
   }
 
-  const camara = await obtenerCamaraTrasera();
-  const constraints = {
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
-  };
-
-  if (camara?.deviceId) {
-    constraints.video.deviceId = { exact: camara.deviceId };
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  const video = prepararVideoScanner();
-  if (!video) {
-    throw new Error("No se pudo preparar la vista previa");
-  }
-
-  video.srcObject = stream;
-  await video.play();
+  const { stream, video } = await prepararStreamCamara(true);
 
   let detectedCode = null;
   const onDetected = (result) => {
@@ -806,14 +809,8 @@ async function iniciarEscaneoLegacy() {
     return;
   }
 
-  const camara = await obtenerCamaraTrasera();
-  const cameraConfig = camara?.deviceId
-    ? { deviceId: { exact: camara.deviceId } }
-    : { facingMode: { ideal: "environment" } };
-
-  if (camara?.label) {
-    mostrarEstado(`Usando cámara: ${camara.label}`);
-  }
+  const cameraConfig = { facingMode: { ideal: "environment" } };
+  mostrarEstado("Iniciando cámara...");
 
   const scanner = new window.Html5Qrcode("videoScanner");
   state.scannerInstancia = scanner;
@@ -912,12 +909,12 @@ async function iniciarEscaneoIsbn() {
     }
   } catch (error) {
     console.error(error);
-    mostrarEstado("No se pudo iniciar la cámara. Comprueba permisos o intenta de nuevo.");
-    state.scannerActivo = false;
+    mostrarEstado("La cámara se abrió pero el escáner automático no está disponible aquí. Puedes escribir el ISBN manualmente.");
+    state.scannerActivo = true;
     btnLinterna.disabled = true;
-    btnDetenerScanner.disabled = true;
-    btnEscanear.disabled = false;
-    btnEscanearPrincipal.disabled = false;
+    btnDetenerScanner.disabled = false;
+    btnEscanear.disabled = true;
+    btnEscanearPrincipal.disabled = true;
   }
 }
 
